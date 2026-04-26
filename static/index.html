@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SENTINEL_AI</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            obsidian: "#050816",
+            panel: "rgba(10, 17, 40, 0.68)",
+            cyanGlow: "#4deeea",
+            cyanEdge: "#22d3ee",
+            magentaGlow: "#a855f7",
+            limeTrace: "#7af7b6"
+          },
+          fontFamily: {
+            display: ["Space Grotesk", "sans-serif"],
+            body: ["Inter", "sans-serif"],
+            mono: ["JetBrains Mono", "monospace"]
+          },
+          boxShadow: {
+            neon: "0 0 0 1px rgba(34, 211, 238, 0.14), 0 24px 80px rgba(6, 182, 212, 0.14)",
+            scan: "0 0 24px rgba(77, 238, 234, 0.75)"
+          }
+        }
+      }
+    };
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+
+    body {
+      background:
+        radial-gradient(circle at top left, rgba(34, 211, 238, 0.16), transparent 28%),
+        radial-gradient(circle at top right, rgba(168, 85, 247, 0.15), transparent 22%),
+        linear-gradient(180deg, #040711 0%, #060917 38%, #04050e 100%);
+    }
+
+    .grid-overlay::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(34, 211, 238, 0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(34, 211, 238, 0.06) 1px, transparent 1px);
+      background-size: 42px 42px;
+      mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.82), transparent);
+      pointer-events: none;
+    }
+
+    .glass {
+      background: rgba(8, 14, 32, 0.64);
+      backdrop-filter: blur(22px);
+      border: 1px solid rgba(125, 211, 252, 0.15);
+      box-shadow: 0 24px 72px rgba(2, 8, 23, 0.42);
+    }
+
+    .scan-shell {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .scan-shell::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: -8%;
+      height: 10px;
+      opacity: 0;
+      background: linear-gradient(90deg, transparent, rgba(77, 238, 234, 0.95), transparent);
+      filter: blur(0.5px);
+      box-shadow: 0 0 28px rgba(77, 238, 234, 0.7);
+    }
+
+    .scan-shell.is-loading::after {
+      opacity: 1;
+      animation: scanline 1.35s linear infinite;
+    }
+
+    .scan-shell.is-loading .loading-copy {
+      opacity: 1;
+    }
+
+    .loading-copy {
+      opacity: 0;
+      transition: opacity 150ms ease;
+    }
+
+    .probability-bar > span {
+      transition: width 220ms ease;
+    }
+
+    .tab-active {
+      border-color: rgba(34, 211, 238, 0.58);
+      background: rgba(34, 211, 238, 0.12);
+      color: #d9fbff;
+    }
+
+    .tab-idle {
+      border-color: rgba(148, 163, 184, 0.15);
+      color: rgba(191, 219, 254, 0.75);
+      background: rgba(15, 23, 42, 0.52);
+    }
+
+    .stat-chip {
+      border: 1px solid rgba(34, 211, 238, 0.16);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .label-mini {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 10px;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+      color: rgb(148 163 184);
+    }
+
+    .value-big {
+      font-family: "Space Grotesk", sans-serif;
+      font-size: clamp(2rem, 4vw, 3.2rem);
+      line-height: 1;
+      color: white;
+    }
+
+    .floating-visual {
+      transform: perspective(1400px) rotateY(-12deg) rotateX(4deg);
+      transform-origin: center;
+      box-shadow: 0 28px 70px rgba(0, 0, 0, 0.42);
+    }
+
+    .floating-visual::before {
+      content: "";
+      position: absolute;
+      inset: auto 10% -14% 10%;
+      height: 28%;
+      border-radius: 999px;
+      background: radial-gradient(circle, rgba(34, 211, 238, 0.24), transparent 72%);
+      filter: blur(26px);
+      pointer-events: none;
+    }
+
+    @keyframes scanline {
+      0% { top: -8%; }
+      100% { top: 104%; }
+    }
+  </style>
+</head>
+<body class="min-h-screen text-slate-100 font-body">
+  <div class="relative grid-overlay">
+    <div class="mx-auto max-w-7xl px-6 py-8 md:px-10 lg:px-12 lg:py-10">
+      <header class="glass rounded-[32px] px-6 py-8 md:px-10 md:py-10">
+        <div class="flex flex-col gap-8">
+          <div class="max-w-4xl">
+            <div class="inline-flex items-center gap-3 rounded-full border border-cyan-400/25 bg-cyan-400/5 px-4 py-2 text-[11px] uppercase tracking-[0.34em] text-cyan-200">
+              <span class="h-2.5 w-2.5 rounded-full bg-cyan-300 shadow-scan"></span>
+              Visual Forensics Core
+            </div>
+            <h1 class="mt-5 font-display text-5xl font-bold tracking-tight text-white md:text-7xl">
+              SENTINEL_AI
+            </h1>
+            <p class="mt-4 max-w-3xl text-sm leading-7 text-slate-300 md:text-base">
+              Neural artifact screening for single uploads and batch sweeps. Choose a balanced scan or shift into an AI-sensitive profile when you want the detector to react faster to synthetic cues.
+            </p>
+          </div>
+        </div>
+      </header>
+
+      <div class="mt-8 flex flex-wrap gap-3" id="modeTabs">
+        <button type="button" data-mode="default" class="tab-active rounded-full border px-5 py-2.5 text-sm transition">
+          <span class="font-display">Default Scan</span>
+        </button>
+        <button type="button" data-mode="sensitive" class="tab-idle rounded-full border px-5 py-2.5 text-sm transition">
+          <span class="font-display">AI-Sensitive</span>
+        </button>
+      </div>
+
+      <section class="mt-8 grid gap-8 lg:grid-cols-[3fr_2fr] lg:items-start">
+        <article class="scan-shell glass rounded-[30px] px-6 py-7 md:px-8 md:py-8" id="singlePanel">
+          <div class="loading-copy absolute right-6 top-6 z-10 rounded-full border border-cyan-400/35 bg-cyan-400/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.24em] text-cyan-100">
+            Scan Running
+          </div>
+          <div class="flex flex-col gap-8">
+            <div class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+              <div class="max-w-2xl">
+                <p class="label-mini text-cyan-200">Active Calibration</p>
+                <h2 id="modeTitle" class="mt-3 font-display text-3xl text-white">Default Scan</h2>
+                <p id="modeDescription" class="mt-3 text-sm leading-7 text-slate-300">
+                  Balanced mode for everyday checks with orientation-conservative scoring.
+                </p>
+              </div>
+              <div class="flex flex-wrap gap-5 text-sm" id="calibrationStats">
+                <div>
+                  <div class="label-mini">Threshold</div>
+                  <div id="thresholdValue" class="mt-2 font-display text-2xl text-cyan-100">65%</div>
+                </div>
+                <div>
+                  <div class="label-mini">Uncertain Low</div>
+                  <div id="uncertainLowValue" class="mt-2 font-display text-2xl text-cyan-100">45%</div>
+                </div>
+                <div>
+                  <div class="label-mini">Uncertain High</div>
+                  <div id="uncertainHighValue" class="mt-2 font-display text-2xl text-cyan-100">70%</div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div class="mb-4 flex items-center justify-between gap-4">
+                <div>
+                  <p class="label-mini text-cyan-200">Single Image</p>
+                  <h3 class="mt-3 font-display text-2xl text-white">Upload and inspect</h3>
+                </div>
+                <button id="clearSingleButton" type="button" class="rounded-full border border-cyan-400/22 px-4 py-2 text-[11px] uppercase tracking-[0.2em] text-cyan-100 transition hover:bg-cyan-400/10">
+                  × Clear
+                </button>
+              </div>
+              <label class="block cursor-pointer rounded-[28px] border border-dashed border-cyan-400/22 px-6 py-10 transition hover:border-cyan-300/45 hover:bg-cyan-400/5 md:px-8 md:py-14">
+                <span class="block font-display text-2xl text-white">Upload a single image</span>
+                <span class="mt-3 block max-w-xl text-sm leading-7 text-slate-400">Drop a frame here or browse your device to run the current scan profile against one image.</span>
+                <input id="singleFileInput" type="file" accept=".jpg,.jpeg,.png,.webp,.bmp" class="mt-6 block w-full text-sm text-slate-300 file:mr-4 file:rounded-full file:border-0 file:bg-cyan-400/15 file:px-4 file:py-2 file:font-medium file:text-cyan-100 hover:file:bg-cyan-400/25">
+              </label>
+              <p id="singleFileName" class="mt-4 text-sm text-slate-400">No file selected.</p>
+            </div>
+
+            <div class="overflow-hidden rounded-[28px] border border-cyan-400/12 bg-slate-950/40">
+              <img id="singlePreview" alt="Upload preview" class="hidden aspect-[16/10] w-full object-cover">
+              <div id="singlePlaceholder" class="flex aspect-[16/10] items-center justify-center px-8 text-center text-sm text-slate-500">
+                Upload a file to bring the preview online here.
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <aside class="scan-shell glass rounded-[30px] px-6 py-7 md:px-8 md:py-8" id="resultPanel">
+          <div class="loading-copy absolute right-6 top-6 z-10 rounded-full border border-cyan-400/35 bg-cyan-400/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.24em] text-cyan-100">
+            Awaiting Verdict
+          </div>
+          <div class="flex flex-col gap-8">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <p class="label-mini text-cyan-200">Result Feed</p>
+                <h3 class="mt-3 font-display text-3xl text-white">Analysis Report</h3>
+              </div>
+              <div id="labelBadge" class="rounded-full border border-slate-700 bg-slate-900/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-slate-300">
+                Idle
+              </div>
+            </div>
+
+            <div class="relative overflow-hidden rounded-[26px] border border-cyan-400/12 bg-slate-950/35 p-3">
+              <div class="floating-visual relative overflow-hidden rounded-[22px] border border-cyan-400/12">
+                <img
+                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuDFjQQ8jFQ_oG_S3sZC_wPivf9Rca7inAhkilp7iyFJyqIzV-rbhbFfSXMJbh0PaTgjmWVH2rAIcO4ByoVDtqZC3_LlK0BSe7JGCIbhAw9MwnVYiQchqEtO6kF-C7DT3fYywi0fHmuI6RmkmwkOxwQNE8bYOAWVy9qwInlJxwXvOtwnyTgt4RF4pPeas5L4oZWPMSppgGG91vPPHqGhiBHtVuVOjC4Wdy35dUeTFOyZEUnLA85RE0B07_iQ3mYP_NGBfeNL8twEr7hZ"
+                  alt="Futuristic cyan-lit portrait"
+                  class="aspect-[16/10] w-full object-cover brightness-90"
+                >
+                <div class="absolute inset-0 bg-gradient-to-t from-slate-950/72 via-transparent to-cyan-400/10"></div>
+                <div class="absolute inset-x-0 bottom-0 p-4">
+                  <p class="label-mini text-cyan-200">Visual Reference</p>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div class="mb-3 flex items-center justify-between gap-4">
+                <span class="label-mini">AI Probability</span>
+                <span id="aiProbabilityText" class="font-display text-2xl text-cyan-100">0.00%</span>
+              </div>
+              <div class="probability-bar h-3 overflow-hidden rounded-full bg-slate-900/90">
+                <span id="probabilityBarFill" class="block h-full w-0 rounded-full bg-gradient-to-r from-cyan-500 via-cyan-300 to-lime-300 shadow-scan"></span>
+              </div>
+            </div>
+
+            <div class="grid gap-8 sm:grid-cols-2">
+              <div>
+                <div class="label-mini">Confidence</div>
+                <div id="confidenceValue" class="mt-3 value-big">0.00%</div>
+              </div>
+              <div>
+                <div class="label-mini">Mode</div>
+                <div id="activeModeEcho" class="mt-3 font-display text-4xl text-white">Default</div>
+              </div>
+            </div>
+            <pre id="singleJsonOutput" class="hidden">{ "label": "-", "ai_probability": 0, "confidence": 0 }</pre>
+            <p id="singleStatus" class="hidden">The detector will respond here as soon as an upload completes.</p>
+          </div>
+        </aside>
+      </section>
+
+      <section class="mt-10">
+        <div class="scan-shell glass rounded-[30px] px-6 py-7 md:px-8 md:py-8" id="batchPanel">
+          <div class="loading-copy absolute right-6 top-6 z-10 rounded-full border border-cyan-400/35 bg-cyan-400/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.24em] text-cyan-100">
+            Batch Sweep Running
+          </div>
+          <div class="flex flex-col gap-6">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <p class="label-mini text-cyan-200">Batch Pipeline</p>
+                <h3 class="mt-3 font-display text-3xl text-white">Multi-File Scan</h3>
+              </div>
+              <div class="flex flex-col gap-4 sm:flex-row sm:items-center">
+                <p id="batchSelectionText" class="text-sm text-slate-400">No files queued.</p>
+                <button id="clearBatchButton" type="button" class="rounded-full border border-cyan-400/22 px-4 py-3 font-display text-sm text-cyan-100 transition hover:bg-cyan-400/10">
+                  × Clear
+                </button>
+                <button id="batchSubmitButton" type="button" class="rounded-full border border-cyan-400/35 bg-cyan-400/10 px-5 py-3 font-display text-sm text-cyan-50 transition hover:bg-cyan-400/20">
+                  Run Batch Scan
+                </button>
+              </div>
+            </div>
+
+            <label class="block cursor-pointer">
+              <span class="sr-only">Select multiple files</span>
+              <input id="batchFileInput" type="file" accept=".jpg,.jpeg,.png,.webp,.bmp" multiple class="block w-full text-sm text-slate-300 file:mr-4 file:rounded-full file:border-0 file:bg-cyan-400/15 file:px-4 file:py-2 file:font-medium file:text-cyan-100 hover:file:bg-cyan-400/25">
+            </label>
+
+            <div class="overflow-x-auto">
+              <table class="min-w-full divide-y divide-cyan-400/10 text-left text-sm">
+                <thead class="text-xs uppercase tracking-[0.24em] text-slate-400">
+                  <tr>
+                    <th class="px-2 py-4 font-medium">File</th>
+                    <th class="px-2 py-4 font-medium">Label</th>
+                    <th class="px-2 py-4 font-medium">AI Probability</th>
+                    <th class="px-2 py-4 font-medium">Confidence</th>
+                  </tr>
+                </thead>
+                <tbody id="batchTableBody" class="divide-y divide-cyan-400/10 text-slate-200">
+                  <tr>
+                    <td colspan="4" class="px-2 py-6 text-center text-slate-500">
+                      Batch verdicts will populate here after a multi-file request.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <p id="batchStatus" class="text-sm leading-7 text-slate-400">
+              Ready for a dark-table sweep.
+            </p>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const modeConfigs = {
+      default: {
+        title: "Default Scan",
+        description: "Balanced mode for everyday checks with orientation-conservative scoring.",
+        threshold: 0.65,
+        uncertainLow: 0.45,
+        uncertainHigh: 0.70,
+        modeEcho: "Default"
+      },
+      sensitive: {
+        title: "AI-Sensitive",
+        description: "Stricter mode with a lower threshold when you want the detector to catch AI cues faster.",
+        threshold: 0.40,
+        uncertainLow: 0.30,
+        uncertainHigh: 0.50,
+        modeEcho: "Sensitive"
+      }
+    };
+
+    let activeMode = "default";
+
+    const modeTabs = document.querySelectorAll("[data-mode]");
+    const modeTitle = document.getElementById("modeTitle");
+    const modeDescription = document.getElementById("modeDescription");
+    const thresholdValue = document.getElementById("thresholdValue");
+    const uncertainLowValue = document.getElementById("uncertainLowValue");
+    const uncertainHighValue = document.getElementById("uncertainHighValue");
+    const singleFileInput = document.getElementById("singleFileInput");
+    const clearSingleButton = document.getElementById("clearSingleButton");
+    const singleFileName = document.getElementById("singleFileName");
+    const singlePreview = document.getElementById("singlePreview");
+    const singlePlaceholder = document.getElementById("singlePlaceholder");
+    const labelBadge = document.getElementById("labelBadge");
+    const aiProbabilityText = document.getElementById("aiProbabilityText");
+    const probabilityBarFill = document.getElementById("probabilityBarFill");
+    const confidenceValue = document.getElementById("confidenceValue");
+    const activeModeEcho = document.getElementById("activeModeEcho");
+    const singleJsonOutput = document.getElementById("singleJsonOutput");
+    const singleStatus = document.getElementById("singleStatus");
+    const batchFileInput = document.getElementById("batchFileInput");
+    const batchSelectionText = document.getElementById("batchSelectionText");
+    const clearBatchButton = document.getElementById("clearBatchButton");
+    const batchSubmitButton = document.getElementById("batchSubmitButton");
+    const batchTableBody = document.getElementById("batchTableBody");
+    const batchStatus = document.getElementById("batchStatus");
+    const singlePanel = document.getElementById("singlePanel");
+    const resultPanel = document.getElementById("resultPanel");
+    const batchPanel = document.getElementById("batchPanel");
+
+    function formatPercent(value) {
+      return `${(value * 100).toFixed(2)}%`;
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function setLoading(panel, isLoading) {
+      panel.classList.toggle("is-loading", isLoading);
+    }
+
+    function setSingleFileName(name) {
+      singleFileName.textContent = name || "No file selected.";
+    }
+
+    function updateMode(mode) {
+      activeMode = mode;
+      const config = modeConfigs[mode];
+      modeTitle.textContent = config.title;
+      modeDescription.textContent = config.description;
+      thresholdValue.textContent = formatPercent(config.threshold);
+      uncertainLowValue.textContent = formatPercent(config.uncertainLow);
+      uncertainHighValue.textContent = formatPercent(config.uncertainHigh);
+      activeModeEcho.textContent = config.modeEcho;
+      const queuedCount = batchFileInput.files?.length || 0;
+      batchSelectionText.textContent = queuedCount
+        ? `${queuedCount} file(s) queued for ${config.title}.`
+        : "No files queued.";
+
+      modeTabs.forEach((tab) => {
+        const isActive = tab.dataset.mode === mode;
+        tab.classList.toggle("tab-active", isActive);
+        tab.classList.toggle("tab-idle", !isActive);
+      });
+    }
+
+    function setLabelBadge(label) {
+      const theme = {
+        "AI-generated": "border-rose-400/35 bg-rose-400/10 text-rose-100",
+        "Real": "border-emerald-400/35 bg-emerald-400/10 text-emerald-100",
+        "Uncertain": "border-amber-300/35 bg-amber-300/10 text-amber-100",
+        "Idle": "border-slate-700 bg-slate-900/70 text-slate-300"
+      };
+
+      labelBadge.className = "rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em]";
+      labelBadge.classList.add(...(theme[label] || theme.Idle).split(" "));
+      labelBadge.textContent = label;
+    }
+
+    function renderSingleResult(result) {
+      setLabelBadge(result.label);
+      aiProbabilityText.textContent = formatPercent(result.ai_probability);
+      confidenceValue.textContent = formatPercent(result.confidence);
+      probabilityBarFill.style.width = `${Math.max(0, Math.min(100, result.ai_probability * 100))}%`;
+      singleJsonOutput.textContent = JSON.stringify(result, null, 2);
+      singleStatus.textContent = `Completed using ${modeConfigs[activeMode].title}.`;
+    }
+
+    function renderSingleError(message) {
+      setLabelBadge("Idle");
+      aiProbabilityText.textContent = "0.00%";
+      confidenceValue.textContent = "0.00%";
+      probabilityBarFill.style.width = "0%";
+      singleJsonOutput.textContent = JSON.stringify({ error: message }, null, 2);
+      singleStatus.textContent = message;
+    }
+
+    function clearSingleUpload() {
+      singleFileInput.value = "";
+      singlePreview.removeAttribute("src");
+      singlePreview.classList.add("hidden");
+      singlePlaceholder.classList.remove("hidden");
+      setSingleFileName("");
+    }
+
+    function clearBatchUpload() {
+      batchFileInput.value = "";
+      batchSelectionText.textContent = "No files queued.";
+    }
+
+    async function submitSingle(file) {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("mode", activeMode);
+
+      setLoading(singlePanel, true);
+      setLoading(resultPanel, true);
+      singleStatus.textContent = `Scanning ${file.name}...`;
+
+      try {
+        const response = await fetch("/predict", {
+          method: "POST",
+          body: formData
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.detail || "Single prediction failed.");
+        }
+        renderSingleResult(payload);
+      } catch (error) {
+        renderSingleError(error.message);
+      } finally {
+        setLoading(singlePanel, false);
+        setLoading(resultPanel, false);
+      }
+    }
+
+    function previewSingle(file) {
+      const objectUrl = URL.createObjectURL(file);
+      singlePreview.src = objectUrl;
+      singlePreview.classList.remove("hidden");
+      singlePlaceholder.classList.add("hidden");
+      singlePreview.onload = () => URL.revokeObjectURL(objectUrl);
+    }
+
+    function renderBatchTable(rows) {
+      if (!rows.length) {
+        batchTableBody.innerHTML = `
+          <tr>
+            <td colspan="4" class="px-4 py-6 text-center text-slate-500">No rows returned.</td>
+          </tr>
+        `;
+        return;
+      }
+
+      batchTableBody.innerHTML = rows.map((row) => {
+        const labelTone = row.label === "AI-generated"
+          ? "text-rose-200"
+          : row.label === "Real"
+            ? "text-emerald-200"
+            : "text-amber-200";
+
+        return `
+          <tr class="hover:bg-white/5">
+            <td class="px-4 py-4 font-medium text-slate-100">${escapeHtml(row.filename)}</td>
+            <td class="px-4 py-4 ${labelTone}">${escapeHtml(row.label)}</td>
+            <td class="px-4 py-4">${formatPercent(row.ai_probability)}</td>
+            <td class="px-4 py-4">${formatPercent(row.confidence)}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    async function submitBatch() {
+      const files = Array.from(batchFileInput.files || []);
+      if (!files.length) {
+        batchStatus.textContent = "Choose at least one file before running a batch scan.";
+        return;
+      }
+
+      const formData = new FormData();
+      files.forEach((file) => formData.append("files", file));
+      formData.append("mode", activeMode);
+
+      setLoading(batchPanel, true);
+      batchStatus.textContent = `Running ${files.length} file(s) through ${modeConfigs[activeMode].title}...`;
+
+      try {
+        const response = await fetch("/predict/batch", {
+          method: "POST",
+          body: formData
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.detail || "Batch prediction failed.");
+        }
+        renderBatchTable(payload);
+        batchStatus.textContent = `Processed ${payload.length} file(s) with ${modeConfigs[activeMode].title}.`;
+      } catch (error) {
+        batchTableBody.innerHTML = `
+          <tr>
+            <td colspan="4" class="px-4 py-6 text-center text-rose-200">${escapeHtml(error.message)}</td>
+          </tr>
+        `;
+        batchStatus.textContent = error.message;
+      } finally {
+        setLoading(batchPanel, false);
+      }
+    }
+
+    modeTabs.forEach((tab) => {
+      tab.addEventListener("click", () => updateMode(tab.dataset.mode));
+    });
+
+    singleFileInput.addEventListener("change", () => {
+      const file = singleFileInput.files?.[0];
+      if (!file) {
+        return;
+      }
+      setSingleFileName(file.name);
+      previewSingle(file);
+      submitSingle(file);
+    });
+
+    batchFileInput.addEventListener("change", () => {
+      const count = batchFileInput.files?.length || 0;
+      batchSelectionText.textContent = count
+        ? `${count} file(s) queued for ${modeConfigs[activeMode].title}.`
+        : "No files queued.";
+    });
+
+    clearSingleButton.addEventListener("click", clearSingleUpload);
+    clearBatchButton.addEventListener("click", clearBatchUpload);
+    batchSubmitButton.addEventListener("click", submitBatch);
+    updateMode(activeMode);
+    setLabelBadge("Idle");
+    clearSingleButton.textContent = "X Clear";
+    clearBatchButton.textContent = "X Clear";
+    setSingleFileName("");
+  </script>
+</body>
+</html>

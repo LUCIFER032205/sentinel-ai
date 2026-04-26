@@ -1,0 +1,11 @@
+.idea/
+.venv/
+__pycache__/
+*.pyc
+*.log
+gemini_key.txt
+artifacts/
+!artifacts/
+artifacts/*
+!artifacts/ai_image_detector.keras
+data/

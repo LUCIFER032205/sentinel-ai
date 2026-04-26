@@ -1,0 +1,2 @@
+"""AI image detector package."""
+

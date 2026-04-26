@@ -1,0 +1,15 @@
+.git
+.idea
+.venv
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+data/
+streamlit*.log
+artifacts/*.png
+artifacts/*.md
+artifacts/*.csv
+artifacts/*.txt
+artifacts/backup_before_phone_retrain_*/
