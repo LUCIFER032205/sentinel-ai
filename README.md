@@ -1,11 +1,12 @@
 ---
 title: SENTINEL_AI
-emoji: "🛡️"
-colorFrom: cyan
-colorTo: blue
+emoji: "🤖"
+colorFrom: blue
+colorTo: indigo
 sdk: docker
 app_port: 7860
 pinned: false
+short_description: FastAPI AI image detector with batch scan support
 ---
 
 # SENTINEL_AI
@@ -36,6 +37,7 @@ Hugging Face will build the Docker image and run the app on port `7860`.
 ## App routes
 
 - `GET /` serves the frontend from `static/index.html`
+- `GET /health` returns a simple health check
 - `POST /predict` accepts one uploaded image
 - `POST /predict/batch` accepts multiple uploaded images
 
