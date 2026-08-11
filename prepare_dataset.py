@@ -18,11 +18,6 @@ def save_image(image_bytes: bytes, destination: Path) -> None:
     image.save(destination, format="PNG")
 
 
-def save_pil_image(image: Image.Image, destination: Path) -> None:
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    image.convert("RGB").save(destination, format="PNG")
-
-
 def download_image_url(image_url: str, destination: Path, retries: int = 5) -> None:
     last_error: Exception | None = None
     for attempt in range(retries):
@@ -76,7 +71,6 @@ def download_subset(
     dataset_name: str,
     real_target: int,
     fake_target: int,
-    seed: int,
     start_offset: int,
 ) -> tuple[int, int]:
     real_dir = PROCESSED_DATA_DIR / "real"
@@ -173,12 +167,6 @@ def main() -> None:
         help="Override the fake-image target count",
     )
     parser.add_argument(
-        "--seed",
-        type=int,
-        default=42,
-        help="Random seed for stream shuffling",
-    )
-    parser.add_argument(
         "--dataset",
         type=str,
         default="OwensLab/CommunityForensics-Small",
@@ -199,7 +187,6 @@ def main() -> None:
         dataset_name=args.dataset,
         real_target=real_target,
         fake_target=fake_target,
-        seed=args.seed,
         start_offset=args.start_offset,
     )
 

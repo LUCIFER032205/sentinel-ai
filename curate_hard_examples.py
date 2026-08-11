@@ -8,16 +8,11 @@ import cv2
 import numpy as np
 import tensorflow as tf
 
-from src.ai_image_detector.data import preprocess_image
-
-
-VALID_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+from src.ai_image_detector.data import VALID_SUFFIXES, iter_image_files, preprocess_image
 
 
 def iter_images(folder: Path) -> list[Path]:
-    return sorted(
-        p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in VALID_SUFFIXES
-    )
+    return list(iter_image_files(folder))
 
 
 def score_images(model: tf.keras.Model, files: list[Path]) -> list[tuple[Path, float]]:

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import random
 from pathlib import Path
 
@@ -166,20 +165,11 @@ def generate_prompts(count: int, seed: int) -> list[str]:
     return prompts
 
 
-def write_outputs(output_dir: Path, prompts: list[str]) -> tuple[Path, Path]:
+def write_outputs(output_dir: Path, prompts: list[str]) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     txt_path = output_dir / "gemini_prompt_bank_500.txt"
-    csv_path = output_dir / "gemini_prompt_bank_500.csv"
-
     txt_path.write_text("\n".join(prompts), encoding="utf-8")
-
-    with csv_path.open("w", newline="", encoding="utf-8") as csv_file:
-        writer = csv.writer(csv_file)
-        writer.writerow(["id", "prompt"])
-        for index, prompt in enumerate(prompts, start=1):
-            writer.writerow([index, prompt])
-
-    return txt_path, csv_path
+    return txt_path
 
 
 def main() -> None:
@@ -195,11 +185,10 @@ def main() -> None:
     args = parser.parse_args()
 
     prompts = generate_prompts(count=args.count, seed=args.seed)
-    txt_path, csv_path = write_outputs(args.output_dir, prompts)
+    txt_path = write_outputs(args.output_dir, prompts)
 
     print(f"Wrote {len(prompts)} prompts to:")
     print(f"- {txt_path}")
-    print(f"- {csv_path}")
 
 
 if __name__ == "__main__":

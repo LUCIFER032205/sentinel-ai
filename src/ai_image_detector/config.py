@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 
@@ -16,3 +17,14 @@ CLASS_NAMES = ["real", "fake"]
 REAL_CLASS_NAME = "real"
 FAKE_CLASS_NAME = "fake"
 SEED = 42
+
+
+def get_env_int(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        parsed = int(value)
+    except ValueError:
+        return default
+    return parsed if parsed > 0 else default

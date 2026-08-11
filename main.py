@@ -9,7 +9,6 @@ from starlette.concurrency import run_in_threadpool
 
 from src.ai_image_detector.inference import (
     CalibrationConfig,
-    PredictionResult,
     load_trained_model,
     predict_image_bytes,
 )
@@ -50,27 +49,14 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-def get_mode_settings(mode: str) -> dict:
-    settings = MODE_CONFIGS.get(mode)
-    if settings is None:
-        raise HTTPException(status_code=400, detail=f"Unsupported mode: {mode}")
-    return settings
-
-
-def serialize_prediction(result: PredictionResult) -> dict[str, float | str]:
-    return {
-        "label": result.label,
-        "ai_probability": float(result.ai_probability),
-        "confidence": float(result.confidence),
-    }
-
-
 async def run_prediction(upload: UploadFile, mode: str) -> dict[str, float | str]:
     payload = await upload.read()
     if not payload:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
-    settings = get_mode_settings(mode)
+    settings = MODE_CONFIGS.get(mode)
+    if settings is None:
+        raise HTTPException(status_code=400, detail=f"Unsupported mode: {mode}")
     try:
         result = await run_in_threadpool(
             predict_image_bytes,
@@ -85,7 +71,11 @@ async def run_prediction(upload: UploadFile, mode: str) -> dict[str, float | str
             detail=f"Unable to process '{upload.filename or 'upload'}' as an image.",
         ) from exc
 
-    return serialize_prediction(result)
+    return {
+        "label": result.label,
+        "ai_probability": float(result.ai_probability),
+        "confidence": float(result.confidence),
+    }
 
 
 @app.get("/")

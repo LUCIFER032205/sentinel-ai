@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 import numpy as np
@@ -19,78 +18,11 @@ from src.ai_image_detector.config import (
     SEED,
     THRESHOLD_PATH,
     TRAINING_PLOT_PATH,
+    get_env_int,
 )
+from src.ai_image_detector.data import VALID_SUFFIXES
 from src.ai_image_detector.model import build_model, unfreeze_for_fine_tuning
-
-
-def get_env_int(name: str, default: int) -> int:
-    value = os.getenv(name)
-    if value is None:
-        return default
-    try:
-        parsed = int(value)
-    except ValueError:
-        return default
-    return parsed if parsed > 0 else default
-
-
-def create_dataset(
-    data_dir: Path,
-    batch_size: int,
-    augment: bool = False,
-    shuffle: bool = False,
-    subset: str | None = None,
-    validation_split: float = 0.0,
-    seed: int = SEED,
-) -> tf.data.Dataset:
-    """Create a TensorFlow dataset from directory with streaming."""
-
-    def parse_image(file_path, label):
-        # Read and decode image
-        img = tf.io.read_file(file_path)
-        img = tf.image.decode_image(img, channels=3, expand_animations=False)
-        img = tf.image.resize(img, IMAGE_SIZE)
-        img = tf.cast(img, tf.float32)
-        # MobileNetV2 preprocessing
-        img = tf.keras.applications.mobilenet_v2.preprocess_input(img)
-        return img, label
-
-    def augment_image(image, label):
-        image = tf.image.random_flip_left_right(image)
-        image = tf.image.random_brightness(image, 0.1)
-        image = tf.image.random_contrast(image, 0.9, 1.1)
-        image = tf.clip_by_value(image, -1.0, 1.0)  # Keep in MobileNetV2 range
-        return image, label
-
-    # Get file paths and labels
-    real_dir = data_dir / "real"
-    fake_dir = data_dir / "fake"
-
-    real_files = [str(p) for p in real_dir.glob("*") if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp", ".webp"}]
-    fake_files = [str(p) for p in fake_dir.glob("*") if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp", ".webp"}]
-
-    file_paths = real_files + fake_files
-    labels = [0] * len(real_files) + [1] * len(fake_files)
-
-    print(f"Found {len(real_files)} real images")
-    print(f"Found {len(fake_files)} fake images")
-    print(f"Total: {len(file_paths)} images")
-
-    # Create dataset
-    dataset = tf.data.Dataset.from_tensor_slices((file_paths, labels))
-
-    if shuffle:
-        dataset = dataset.shuffle(buffer_size=min(len(file_paths), 10000), seed=seed)
-
-    dataset = dataset.map(parse_image, num_parallel_calls=tf.data.AUTOTUNE)
-
-    if augment:
-        dataset = dataset.map(augment_image, num_parallel_calls=tf.data.AUTOTUNE)
-
-    dataset = dataset.batch(batch_size)
-    dataset = dataset.prefetch(tf.data.AUTOTUNE)
-
-    return dataset, len(file_paths)
+from train import combine_histories, save_training_plot
 
 
 def split_dataset(
@@ -121,8 +53,8 @@ def split_dataset(
     real_dir = data_dir / "real"
     fake_dir = data_dir / "fake"
 
-    real_files = sorted([str(p) for p in real_dir.glob("*") if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp", ".webp"}])
-    fake_files = sorted([str(p) for p in fake_dir.glob("*") if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp", ".webp"}])
+    real_files = sorted([str(p) for p in real_dir.glob("*") if p.suffix.lower() in VALID_SUFFIXES])
+    fake_files = sorted([str(p) for p in fake_dir.glob("*") if p.suffix.lower() in VALID_SUFFIXES])
 
     # Balance and shuffle
     np.random.seed(seed)
@@ -171,49 +103,17 @@ def split_dataset(
     return train_ds, val_ds, test_ds, len(val_files), len(test_files)
 
 
-def save_training_plot(history) -> None:
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
-
-    axes[0].plot(history.history["accuracy"], label="Train")
-    axes[0].plot(history.history["val_accuracy"], label="Validation")
-    axes[0].set_title("Accuracy")
-    axes[0].set_xlabel("Epoch")
-    axes[0].set_ylabel("Accuracy")
-    axes[0].legend()
-
-    axes[1].plot(history.history["loss"], label="Train")
-    axes[1].plot(history.history["val_loss"], label="Validation")
-    axes[1].set_title("Loss")
-    axes[1].set_xlabel("Epoch")
-    axes[1].set_ylabel("Loss")
-    axes[1].legend()
-
-    fig.tight_layout()
-    fig.savefig(TRAINING_PLOT_PATH, dpi=150)
-    plt.close(fig)
-    print(f"Saved training plot to {TRAINING_PLOT_PATH}")
-
-
 def evaluate_model(model, test_ds, test_count, threshold=0.5):
     """Evaluate model on test set."""
-    # Collect predictions
-    y_true = []
-    y_pred = []
-    y_probs = []
+    y_true, y_pred = [], []
 
     for images, labels in test_ds:
         probs = model.predict(images, verbose=0)
-        y_probs.extend(probs.flatten().tolist())
         y_pred.extend((probs >= threshold).flatten().astype(int).tolist())
         y_true.extend(labels.numpy().tolist())
 
     y_true = np.array(y_true)
     y_pred = np.array(y_pred)
-    y_probs = np.array(y_probs)
 
     acc = accuracy_score(y_true, y_pred)
     f1 = f1_score(y_true, y_pred, pos_label=1, zero_division=0)
@@ -232,7 +132,6 @@ def evaluate_model(model, test_ds, test_count, threshold=0.5):
     print(f"\nTest Accuracy: {acc:.4f}")
     print(f"Test F1 (fake): {f1:.4f}")
     print(f"Confusion Matrix:\n{cm}")
-
     return metrics
 
 
@@ -303,14 +202,7 @@ def main():
     model = tf.keras.models.load_model(str(MODEL_PATH))
     evaluate_model(model, test_ds, test_count)
 
-    # Save plots
-    class CombinedHistory:
-        def __init__(self, h1, h2):
-            self.history = {}
-            for key in h1.history:
-                self.history[key] = h1.history[key] + h2.history[key]
-
-    save_training_plot(CombinedHistory(history1, history2))
+    save_training_plot(combine_histories(history1, history2))
 
     print(f"\n{'='*50}")
     print("Training complete!")

@@ -8,21 +8,16 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageEnhance, ImageFilter
 
-
-VALID_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+from src.ai_image_detector.data import VALID_SUFFIXES, iter_image_files
 
 
 def list_images(directory: Path) -> list[Path]:
     if not directory.exists():
         raise FileNotFoundError(f"Folder not found: {directory}")
-    files = [
-        path
-        for path in directory.rglob("*")
-        if path.is_file() and path.suffix.lower() in VALID_SUFFIXES
-    ]
+    files = list(iter_image_files(directory))
     if not files:
         raise ValueError(f"No valid images found in: {directory}")
-    return sorted(files)
+    return files
 
 
 def random_resized_crop(image: Image.Image, rng: random.Random) -> Image.Image:

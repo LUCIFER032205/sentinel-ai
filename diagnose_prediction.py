@@ -7,16 +7,10 @@ import cv2
 import numpy as np
 import tensorflow as tf
 from PIL import Image, ImageOps
-from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 
 from src.ai_image_detector.config import IMAGE_SIZE, MODEL_PATH
-from src.ai_image_detector.data import load_image_for_inference
+from src.ai_image_detector.data import load_image_for_inference, preprocess_image
 from src.ai_image_detector.inference import load_calibration
-
-
-def preprocess_rgb(rgb: np.ndarray) -> np.ndarray:
-    resized = cv2.resize(rgb, IMAGE_SIZE)
-    return preprocess_input(resized.astype("float32"))
 
 
 def resize_with_padding(rgb: np.ndarray) -> np.ndarray:
@@ -49,7 +43,7 @@ def main() -> None:
 
     variants = {
         "current_loader": current,
-        "exif_transposed_stretched": preprocess_rgb(rgb),
+        "exif_transposed_stretched": preprocess_image(cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)),
         "exif_transposed_padded": resize_with_padding(rgb),
         "rotated_90_padded": resize_with_padding(np.rot90(rgb, 1)),
         "rotated_180_padded": resize_with_padding(np.rot90(rgb, 2)),

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
-from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,6 +9,7 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 from sklearn.model_selection import train_test_split
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
 
+from calibrate_thresholds import find_best_threshold
 from src.ai_image_detector.config import (
     ARTIFACTS_DIR,
     METRICS_PATH,
@@ -19,20 +18,10 @@ from src.ai_image_detector.config import (
     SEED,
     THRESHOLD_PATH,
     TRAINING_PLOT_PATH,
+    get_env_int,
 )
 from src.ai_image_detector.data import load_dataset
 from src.ai_image_detector.model import build_model, unfreeze_for_fine_tuning
-
-
-def get_env_int(name: str, default: int) -> int:
-    value = os.getenv(name)
-    if value is None:
-        return default
-    try:
-        parsed = int(value)
-    except ValueError:
-        return default
-    return parsed if parsed > 0 else default
 
 
 def make_datasets(
@@ -159,42 +148,6 @@ def evaluate_and_save_metrics(
     METRICS_PATH.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
 
 
-def calibrate_threshold(y_val: np.ndarray, val_probs: np.ndarray) -> dict[str, float]:
-    thresholds = np.linspace(0.2, 0.8, 241)
-    best_acc = -1.0
-    best_f1 = -1.0
-    best_threshold = 0.5
-    default_acc = float(accuracy_score(y_val, (val_probs >= 0.5).astype(int)))
-
-    for threshold in thresholds:
-        predicted = (val_probs >= threshold).astype(int)
-        acc = accuracy_score(y_val, predicted)
-        f1_fake = f1_score(y_val, predicted, pos_label=1, zero_division=0)
-        if acc > best_acc or (acc == best_acc and f1_fake > best_f1):
-            best_acc = acc
-            best_f1 = f1_fake
-            best_threshold = float(threshold)
-
-    if best_acc < default_acc + 0.02:
-        best_threshold = 0.5
-
-    best_threshold = float(np.clip(best_threshold, 0.35, 0.65))
-    margin = 0.10
-    uncertain_low = float(np.clip(best_threshold - margin, 0.0, 1.0))
-    uncertain_high = float(np.clip(best_threshold + margin, 0.0, 1.0))
-
-    return {
-        "threshold": best_threshold,
-        "uncertain_low": uncertain_low,
-        "uncertain_high": uncertain_high,
-        "validation_accuracy_default_0_5": default_acc,
-        "validation_accuracy": float(accuracy_score(y_val, (val_probs >= best_threshold).astype(int))),
-        "validation_f1_fake": float(
-            f1_score(y_val, (val_probs >= best_threshold).astype(int), pos_label=1, zero_division=0)
-        ),
-    }
-
-
 def main() -> None:
     ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
     if not PROCESSED_DATA_DIR.exists():
@@ -264,7 +217,7 @@ def main() -> None:
 
     model = tf.keras.models.load_model(MODEL_PATH)
     val_predictions = predict_probabilities(model, x_val, batch_size=32)
-    threshold_info = calibrate_threshold(y_val, val_predictions)
+    threshold_info = find_best_threshold(y_val, val_predictions)
     THRESHOLD_PATH.write_text(json.dumps(threshold_info, indent=2), encoding="utf-8")
 
     save_training_plot(combine_histories(frozen_history, finetune_history))

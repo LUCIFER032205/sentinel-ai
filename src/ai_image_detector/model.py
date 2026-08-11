@@ -8,19 +8,6 @@ from tensorflow.keras.optimizers import Adam
 from .config import IMAGE_SIZE, SEED
 
 
-def compile_model(model: tf.keras.Model, learning_rate: float) -> None:
-    model.compile(
-        optimizer=Adam(learning_rate=learning_rate),
-        loss="binary_crossentropy",
-        metrics=[
-            "accuracy",
-            tf.keras.metrics.Precision(name="precision"),
-            tf.keras.metrics.Recall(name="recall"),
-            tf.keras.metrics.AUC(name="auc"),
-        ],
-    )
-
-
 def build_model() -> tf.keras.Model:
     tf.keras.utils.set_random_seed(SEED)
 
@@ -42,7 +29,16 @@ def build_model() -> tf.keras.Model:
         ]
     )
 
-    compile_model(model, learning_rate=1e-4)
+    model.compile(
+        optimizer=Adam(learning_rate=1e-4),
+        loss="binary_crossentropy",
+        metrics=[
+            "accuracy",
+            tf.keras.metrics.Precision(name="precision"),
+            tf.keras.metrics.Recall(name="recall"),
+            tf.keras.metrics.AUC(name="auc"),
+        ],
+    )
     return model
 
 
@@ -57,4 +53,13 @@ def unfreeze_for_fine_tuning(model: tf.keras.Model, trainable_layers: int = 30) 
         if isinstance(layer, tf.keras.layers.BatchNormalization):
             layer.trainable = False
 
-    compile_model(model, learning_rate=1e-5)
+    model.compile(
+        optimizer=Adam(learning_rate=1e-5),
+        loss="binary_crossentropy",
+        metrics=[
+            "accuracy",
+            tf.keras.metrics.Precision(name="precision"),
+            tf.keras.metrics.Recall(name="recall"),
+            tf.keras.metrics.AUC(name="auc"),
+        ],
+    )
