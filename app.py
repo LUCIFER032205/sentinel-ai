@@ -59,47 +59,61 @@ def inject_styles() -> None:
         }
 
         .hero {
-            background:
-                radial-gradient(circle at top left, rgba(255, 255, 255, 0.18), transparent 28%),
-                linear-gradient(135deg, rgba(15, 23, 42, 0.94), rgba(30, 64, 175, 0.88) 52%, rgba(22, 163, 74, 0.84));
-            border: 1px solid rgba(255, 255, 255, 0.3);
+            background: linear-gradient(135deg, rgba(34,211,238,0.06) 0%, rgba(129,140,248,0.06) 100%);
+            border: 1px solid var(--glass-border);
             border-radius: 24px;
-            padding: 1.5rem 1.4rem;
-            color: #f8fafc;
-            box-shadow: 0 20px 48px rgba(15, 23, 42, 0.24);
-            margin-bottom: 1rem;
+            padding: 2.5rem 2rem;
+            margin-bottom: 1.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: "";
+            position: absolute;
+            top: -60px; left: -60px;
+            width: 320px; height: 320px;
+            background: radial-gradient(circle, rgba(34,211,238,0.12) 0%, transparent 70%);
+            pointer-events: none;
         }
 
         .hero .kicker {
-            font-size: 0.8rem;
-            letter-spacing: 0.14em;
+            font-size: 0.78rem;
+            letter-spacing: 0.16em;
             text-transform: uppercase;
-            font-weight: 700;
-            opacity: 0.95;
+            font-weight: 600;
+            color: var(--accent);
+            margin-bottom: 0.6rem;
         }
 
         .hero .title {
-            font-size: 2.2rem;
+            font-family: "Space Grotesk", sans-serif;
+            font-size: 2.8rem;
             font-weight: 800;
-            margin-top: 0.2rem;
-            margin-bottom: 0.35rem;
+            color: var(--ink);
+            text-shadow: 0 0 40px rgba(34, 211, 238, 0.5);
+            margin-bottom: 0.5rem;
+            line-height: 1.15;
         }
 
         .hero .subtitle {
-            opacity: 0.97;
-            max-width: 60rem;
+            color: var(--muted);
+            font-size: 1rem;
             line-height: 1.6;
+            max-width: 52rem;
+            margin-bottom: 1rem;
         }
 
-        .chip {
+        .hero .chip {
             display: inline-block;
-            padding: 0.35rem 0.66rem;
+            padding: 0.3rem 0.75rem;
             border-radius: 999px;
-            border: 1px solid rgba(255, 255, 255, 0.36);
+            border: 1px solid rgba(34, 211, 238, 0.3);
+            background: rgba(34, 211, 238, 0.08);
+            color: var(--accent);
             font-size: 0.82rem;
-            margin-top: 0.6rem;
-            margin-right: 0.35rem;
-            background: rgba(255, 255, 255, 0.14);
+            font-weight: 600;
+            margin-right: 0.5rem;
         }
 
         .glass-card {
@@ -240,13 +254,13 @@ def render_hero() -> None:
     st.markdown(
         """
         <div class="hero">
-            <div class="kicker">Visual Forensics</div>
-            <div class="title">AI Image Detector</div>
+            <div class="kicker">Visual Forensics · AI Detection</div>
+            <div class="title">Can you tell what's real?</div>
             <div class="subtitle">
-                Check one image or a batch in a cleaner tab-based workspace.
-                Use the default scan for balanced decisions or switch to the sensitive tab
-                when you want the detector to lean more aggressively toward AI signals.
+                Upload any image. The model tells you if a human or an AI made it.
             </div>
+            <span class="chip">88.8% Accuracy</span>
+            <span class="chip">1,000-image test set</span>
         </div>
         """,
         unsafe_allow_html=True,
