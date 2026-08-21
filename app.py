@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import streamlit as st
+import streamlit.components.v1 as components
 from PIL import Image
 
 from src.ai_image_detector.config import (
@@ -361,13 +362,100 @@ def inject_styles() -> None:
         [data-testid="stFileUploader"]:hover {
             border-color: rgba(34, 211, 238, 0.6);
         }
+
+        /* Hide Streamlit default header/toolbar whitespace */
+        header[data-testid="stHeader"] {
+            display: none !important;
+        }
+        #MainMenu { display: none !important; }
+        .stDeployButton { display: none !important; }
+        [data-testid="stToolbar"] { display: none !important; }
+        .stApp > header { display: none !important; }
+        .block-container {
+            padding-top: 1.5rem !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
 
-def render_hero() -> None:
+def render_3d_background() -> None:
+    components.html(
+        """
+        <style>
+        #bg-canvas {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            z-index: 0;
+            pointer-events: none;
+        }
+        </style>
+        <canvas id="bg-canvas"></canvas>
+        <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+        <script>
+        (function() {
+            const canvas = document.getElementById('bg-canvas');
+            const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 80;
+
+            // Particle geometry
+            const count = 1800;
+            const geo = new THREE.BufferGeometry();
+            const pos = new Float32Array(count * 3);
+            for (let i = 0; i < count * 3; i++) {
+                pos[i] = (Math.random() - 0.5) * 200;
+            }
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+
+            const mat = new THREE.PointsMaterial({
+                color: 0x22d3ee,
+                size: 0.55,
+                transparent: true,
+                opacity: 0.55,
+                sizeAttenuation: true,
+            });
+
+            const points = new THREE.Points(geo, mat);
+            scene.add(points);
+
+            // Mouse parallax
+            let mx = 0, my = 0;
+            window.addEventListener('mousemove', e => {
+                mx = (e.clientX / window.innerWidth - 0.5) * 2;
+                my = (e.clientY / window.innerHeight - 0.5) * 2;
+            });
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            let t = 0;
+            function animate() {
+                requestAnimationFrame(animate);
+                t += 0.0008;
+                points.rotation.y = t + mx * 0.12;
+                points.rotation.x = t * 0.4 + my * 0.08;
+                renderer.render(scene, camera);
+            }
+            animate();
+        })();
+        </script>
+        """,
+        height=0,
+        scrolling=False,
+    )
+
+
+
     st.markdown(
         """
         <div class="hero">
@@ -557,6 +645,7 @@ def main() -> None:
         st.warning("No trained model found. Train first with `python train.py`, then reload.")
         st.stop()
 
+    render_3d_background()
     render_hero()
 
     model = get_model()
