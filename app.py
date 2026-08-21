@@ -455,7 +455,7 @@ def render_3d_background() -> None:
     )
 
 
-
+def render_hero() -> None:
     st.markdown(
         """
         <div class="hero">
