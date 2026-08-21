@@ -126,11 +126,15 @@ def inject_styles() -> None:
         }
 
         .soft-card {
-            background: var(--card);
-            border: 1px solid var(--line);
-            border-radius: 18px;
-            padding: 1rem 1.05rem;
-            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            padding: 1.5rem 1.4rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            max-width: 860px;
+            margin: 0 auto;
         }
 
         .metric-grid {
@@ -164,8 +168,9 @@ def inject_styles() -> None:
 
         .mode-intro {
             color: var(--muted);
-            margin-bottom: 0.9rem;
+            margin-bottom: 1rem;
             max-width: 48rem;
+            font-size: 0.95rem;
         }
 
         .empty-state {
@@ -185,8 +190,8 @@ def inject_styles() -> None:
 
         .tab-note {
             color: var(--muted);
-            font-size: 0.92rem;
-            margin-bottom: 0.7rem;
+            font-size: 0.9rem;
+            margin-bottom: 0.8rem;
         }
 
         .decision-pill {
@@ -220,29 +225,44 @@ def inject_styles() -> None:
         }
 
         .stTabs [data-baseweb="tab-list"] {
-            gap: 0.6rem;
-            margin-bottom: 0.8rem;
+            gap: 0.5rem;
+            margin-bottom: 1.2rem;
+            background: rgba(255,255,255,0.03);
+            border-radius: 999px;
+            padding: 0.25rem;
+            border: 1px solid var(--glass-border);
+            width: fit-content;
         }
 
         .stTabs [data-baseweb="tab"] {
-            background: rgba(255, 255, 255, 0.62);
-            border: 1px solid rgba(15, 23, 42, 0.10);
+            background: transparent;
+            border: none;
             border-radius: 999px;
-            padding: 0.55rem 1rem;
+            padding: 0.45rem 1.1rem;
+            color: var(--muted);
+            font-weight: 600;
+            font-size: 0.9rem;
             height: auto;
+            transition: all 0.2s;
         }
 
         .stTabs [aria-selected="true"] {
-            background: linear-gradient(135deg, rgba(30, 64, 175, 0.12), rgba(22, 163, 74, 0.16));
-            border-color: rgba(30, 64, 175, 0.20);
-            box-shadow: 0 10px 20px rgba(15, 23, 42, 0.06);
+            background: rgba(34, 211, 238, 0.12);
+            color: var(--accent);
+            border: 1px solid rgba(34, 211, 238, 0.25);
+            box-shadow: 0 0 12px rgba(34, 211, 238, 0.15);
         }
 
         [data-testid="stFileUploader"] {
-            background: rgba(255, 255, 255, 0.62);
-            border-radius: 18px;
-            padding: 0.45rem;
-            border: 1px solid rgba(15, 23, 42, 0.08);
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 14px;
+            padding: 0.5rem;
+            border: 1.5px dashed rgba(34, 211, 238, 0.3);
+            transition: border-color 0.2s;
+        }
+
+        [data-testid="stFileUploader"]:hover {
+            border-color: rgba(34, 211, 238, 0.6);
         }
         </style>
         """,
