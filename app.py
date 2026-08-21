@@ -194,18 +194,26 @@ def inject_styles() -> None:
         }
 
         .empty-state {
-            padding: 1.4rem 1.2rem;
-            border-radius: 18px;
-            background: rgba(255, 255, 255, 0.7);
-            border: 1px dashed rgba(15, 23, 42, 0.16);
+            padding: 2rem 1.5rem;
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1.5px dashed rgba(255, 255, 255, 0.08);
             color: var(--muted);
             margin-top: 0.5rem;
+            text-align: center;
         }
 
         .empty-state strong {
             display: block;
             color: var(--ink);
-            margin-bottom: 0.3rem;
+            margin-bottom: 0.4rem;
+            font-size: 1rem;
+        }
+
+        [data-testid="stDataFrame"] {
+            background: rgba(255,255,255,0.02) !important;
+            border-radius: 12px;
+            border: 1px solid var(--glass-border);
         }
 
         .tab-note {
@@ -333,6 +341,7 @@ def confidence_bar_html(ai_prob: float, label: str) -> str:
         f'<div class="conf-bar-fill {css_class}" style="width:{pct}%"></div>'
         f'</div>'
     )
+
 
 
 def render_empty_state(title: str, body: str) -> None:
@@ -486,6 +495,7 @@ def main() -> None:
             orientation_conservative=False,
             model=model,
         )
+
 
 
 if __name__ == "__main__":
