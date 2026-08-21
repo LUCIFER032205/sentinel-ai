@@ -258,6 +258,69 @@ def inject_styles() -> None:
             font-size: 0.88rem;
         }
 
+        .how-it-works {
+            margin: 2rem 0 1rem;
+            text-align: center;
+        }
+
+        .how-it-works h2 {
+            font-size: 1.1rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+        }
+
+        .how-steps {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            max-width: 720px;
+            margin: 0 auto;
+        }
+
+        .how-step {
+            padding: 1.2rem 1rem;
+            border-radius: 16px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--glass-border);
+        }
+
+        .how-step .icon {
+            font-size: 1.6rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .how-step .step-title {
+            font-weight: 700;
+            color: var(--ink);
+            margin-bottom: 0.3rem;
+            font-size: 0.95rem;
+        }
+
+        .how-step .step-body {
+            color: var(--muted);
+            font-size: 0.85rem;
+            line-height: 1.5;
+        }
+
+        .site-footer {
+            border-top: 1px solid var(--glass-border);
+            margin-top: 2.5rem;
+            padding: 1.2rem 0;
+            color: var(--muted);
+            font-size: 0.84rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .site-footer a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
         .stTabs [data-baseweb="tab-list"] {
             gap: 0.5rem;
             margin-bottom: 1.2rem;
@@ -342,6 +405,45 @@ def confidence_bar_html(ai_prob: float, label: str) -> str:
         f'</div>'
     )
 
+
+
+def render_how_it_works() -> None:
+    st.markdown(
+        """
+        <div class="how-it-works">
+            <h2>How it works</h2>
+            <div class="how-steps">
+                <div class="how-step">
+                    <div class="icon">📤</div>
+                    <div class="step-title">Upload</div>
+                    <div class="step-body">Drop any JPG, PNG, or WebP image</div>
+                </div>
+                <div class="how-step">
+                    <div class="icon">🔍</div>
+                    <div class="step-title">Analyze</div>
+                    <div class="step-body">The model scans for AI generation patterns</div>
+                </div>
+                <div class="how-step">
+                    <div class="icon">✅</div>
+                    <div class="step-title">Get Result</div>
+                    <div class="step-body">See the verdict with a confidence score</div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_footer() -> None:
+    st.markdown(
+        """
+        <div class="site-footer">
+            <span>Built by Kishore &nbsp;&middot;&nbsp; MobileNetV2 &nbsp;&middot;&nbsp; TensorFlow &nbsp;&middot;&nbsp; Trained on real + Gemini-generated images</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def render_empty_state(title: str, body: str) -> None:
