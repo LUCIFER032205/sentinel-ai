@@ -29,32 +29,33 @@ def inject_styles() -> None:
     st.markdown(
         """
         <style>
-        @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700;800&display=swap');
 
         :root {
-            --bg-a: #f4f7ff;
-            --bg-b: #eafaf1;
-            --ink: #0f172a;
-            --muted: #475569;
-            --card: rgba(255, 255, 255, 0.88);
-            --line: rgba(15, 23, 42, 0.12);
-            --ok: #0f9f6e;
-            --warn: #e09f1f;
-            --bad: #d14343;
+            --bg: #080b14;
+            --glass: rgba(255, 255, 255, 0.04);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --ink: #f1f5f9;
+            --muted: #64748b;
+            --accent: #22d3ee;
+            --violet: #818cf8;
+            --ok: rgba(34, 197, 94, 0.12);
+            --ok-glow: rgba(34, 197, 94, 0.45);
+            --bad: rgba(239, 68, 68, 0.12);
+            --bad-glow: rgba(239, 68, 68, 0.45);
+            --warn: rgba(251, 191, 36, 0.12);
+            --warn-glow: rgba(251, 191, 36, 0.45);
         }
 
         .stApp {
-            background:
-                radial-gradient(65rem 28rem at -10% -10%, #dbeafe 0%, transparent 65%),
-                radial-gradient(60rem 24rem at 110% -15%, #dcfce7 0%, transparent 60%),
-                linear-gradient(145deg, var(--bg-a), var(--bg-b));
-            font-family: "Manrope", sans-serif;
+            background-color: var(--bg);
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Ccircle cx='1' cy='1' r='1' fill='rgba(255,255,255,0.04)'/%3E%3C/svg%3E");
+            font-family: "Inter", sans-serif;
             color: var(--ink);
         }
 
         h1, h2, h3 {
             font-family: "Space Grotesk", sans-serif !important;
-            letter-spacing: 0.2px;
         }
 
         .hero {
@@ -99,6 +100,15 @@ def inject_styles() -> None:
             margin-top: 0.6rem;
             margin-right: 0.35rem;
             background: rgba(255, 255, 255, 0.14);
+        }
+
+        .glass-card {
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
         }
 
         .soft-card {
