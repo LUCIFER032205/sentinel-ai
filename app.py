@@ -139,32 +139,52 @@ def inject_styles() -> None:
 
         .metric-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
             gap: 0.75rem;
-            margin-top: 0.25rem;
-            margin-bottom: 0.35rem;
+            margin-top: 0.75rem;
+            margin-bottom: 0.5rem;
         }
 
         .metric-card {
             border-radius: 12px;
-            background: rgba(255, 255, 255, 0.8);
-            border: 1px solid var(--line);
-            padding: 0.8rem 0.9rem;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--glass-border);
+            padding: 0.85rem 1rem;
         }
 
         .metric-label {
-            font-size: 0.76rem;
+            font-size: 0.74rem;
             color: var(--muted);
             text-transform: uppercase;
-            letter-spacing: 0.07em;
-            font-weight: 700;
+            letter-spacing: 0.08em;
+            font-weight: 600;
         }
 
         .metric-value {
-            font-size: 1.35rem;
-            margin-top: 0.18rem;
+            font-size: 1.4rem;
+            margin-top: 0.2rem;
             font-weight: 800;
+            color: var(--ink);
         }
+
+        .conf-bar-wrap {
+            width: 100%;
+            height: 6px;
+            background: rgba(255,255,255,0.06);
+            border-radius: 999px;
+            margin: 0.6rem 0 0.8rem;
+            overflow: hidden;
+        }
+
+        .conf-bar-fill {
+            height: 100%;
+            border-radius: 999px;
+            transition: width 0.4s ease;
+        }
+
+        .conf-bar-fill.ai   { background: #ef4444; box-shadow: 0 0 8px rgba(239,68,68,0.7); }
+        .conf-bar-fill.real { background: #22c55e; box-shadow: 0 0 8px rgba(34,197,94,0.7); }
+        .conf-bar-fill.uncertain { background: #fbbf24; box-shadow: 0 0 8px rgba(251,191,36,0.7); }
 
         .mode-intro {
             color: var(--muted);
@@ -196,27 +216,33 @@ def inject_styles() -> None:
 
         .decision-pill {
             display: inline-block;
-            padding: 0.4rem 0.75rem;
+            padding: 0.45rem 1rem;
             border-radius: 999px;
-            font-size: 0.88rem;
+            font-size: 0.9rem;
             font-weight: 700;
-            margin-bottom: 0.4rem;
-            border: 1px solid transparent;
+            margin-bottom: 0.6rem;
+            letter-spacing: 0.02em;
         }
+
         .decision-ai {
-            color: #7f1d1d;
-            background: rgba(220, 38, 38, 0.14);
-            border-color: rgba(220, 38, 38, 0.35);
+            color: #fca5a5;
+            background: var(--bad);
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            box-shadow: 0 0 16px var(--bad-glow);
         }
+
         .decision-real {
-            color: #14532d;
-            background: rgba(22, 163, 74, 0.14);
-            border-color: rgba(22, 163, 74, 0.35);
+            color: #86efac;
+            background: var(--ok);
+            border: 1px solid rgba(34, 197, 94, 0.35);
+            box-shadow: 0 0 16px var(--ok-glow);
         }
+
         .decision-uncertain {
-            color: #78350f;
-            background: rgba(217, 119, 6, 0.16);
-            border-color: rgba(217, 119, 6, 0.34);
+            color: #fde68a;
+            background: var(--warn);
+            border: 1px solid rgba(251, 191, 36, 0.35);
+            box-shadow: 0 0 16px var(--warn-glow);
         }
 
         .footer-note {
@@ -295,6 +321,20 @@ def decision_class(label: str) -> str:
     return "decision-pill decision-uncertain"
 
 
+def confidence_bar_html(ai_prob: float, label: str) -> str:
+    pct = int(min(max(ai_prob, 0.0), 1.0) * 100)
+    css_class = (
+        "ai" if label == "AI-generated"
+        else "real" if label == "Real"
+        else "uncertain"
+    )
+    return (
+        f'<div class="conf-bar-wrap">'
+        f'<div class="conf-bar-fill {css_class}" style="width:{pct}%"></div>'
+        f'</div>'
+    )
+
+
 def render_empty_state(title: str, body: str) -> None:
     st.markdown(
         f"""
@@ -365,7 +405,7 @@ def render_detection_tab(
             f'<span class="{decision_class(item["Label"])}">{item["Label"]}</span>',
             unsafe_allow_html=True,
         )
-        st.progress(min(max(item["ai_prob_raw"], 0.0), 1.0))
+        st.markdown(confidence_bar_html(item["ai_prob_raw"], item["Label"]), unsafe_allow_html=True)
         st.markdown(
             f"""
             <div class="metric-grid">
@@ -395,7 +435,7 @@ def render_detection_tab(
         f'<span class="{decision_class(chosen["Label"])}">{chosen["Label"]}</span>',
         unsafe_allow_html=True,
     )
-    st.progress(min(max(chosen["ai_prob_raw"], 0.0), 1.0))
+    st.markdown(confidence_bar_html(chosen["ai_prob_raw"], chosen["Label"]), unsafe_allow_html=True)
     st.caption(f"AI Probability: {chosen['AI Probability']} | Confidence: {chosen['Confidence']}")
 
 
