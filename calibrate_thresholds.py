@@ -9,14 +9,11 @@ import tensorflow as tf
 from sklearn.metrics import accuracy_score, f1_score
 
 from src.ai_image_detector.config import MODEL_PATH, PROCESSED_DATA_DIR, SEED, THRESHOLD_PATH
-from src.ai_image_detector.data import load_image_for_inference
-
-
-VALID_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
+from src.ai_image_detector.data import VALID_SUFFIXES, iter_image_files, load_image_for_inference
 
 
 def image_files(folder: Path) -> list[Path]:
-    return sorted(path for path in folder.rglob("*") if path.suffix.lower() in VALID_SUFFIXES)
+    return list(iter_image_files(folder))
 
 
 def balanced_sample(real_files: list[Path], fake_files: list[Path], per_class: int) -> tuple[list[Path], np.ndarray]:
