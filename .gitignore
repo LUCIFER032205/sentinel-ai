@@ -9,3 +9,5 @@ artifacts/
 artifacts/*
 !artifacts/ai_image_detector.keras
 data/
+Real_vs_AI_Image_Checker_Report.docx
+report_assets/
