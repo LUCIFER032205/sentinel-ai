@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -30,10 +31,25 @@ class CalibrationConfig:
 
 
 def load_calibration(calibration_path: Path = THRESHOLD_PATH) -> CalibrationConfig:
-    """Read the decision threshold produced by calibrate_thresholds.py."""
+    """Read the decision threshold produced by calibrate_thresholds.py.
+
+    Falls back to DEFAULT_THRESHOLD when the file is absent, and says so loudly.
+    A silent fallback is how a deployment ends up scoring at a different threshold
+    from the one that was tuned, with nothing to catch the divergence.
+    """
     threshold = DEFAULT_THRESHOLD
     band_low = threshold - DEFAULT_BAND
     band_high = threshold + DEFAULT_BAND
+
+    if not calibration_path.exists():
+        warnings.warn(
+            f"No calibration file at {calibration_path}. Falling back to "
+            f"DEFAULT_THRESHOLD={DEFAULT_THRESHOLD} and a +/-{DEFAULT_BAND} band. "
+            "This is the hardcoded default, NOT a tuned threshold - if the model "
+            "has been retrained, these verdicts are calibrated for a different one.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
 
     if calibration_path.exists():
         payload = json.loads(calibration_path.read_text(encoding="utf-8"))
@@ -44,9 +60,11 @@ def load_calibration(calibration_path: Path = THRESHOLD_PATH) -> CalibrationConf
         band_low = float(payload.get("uncertain_low", threshold - DEFAULT_BAND))
         band_high = float(payload.get("uncertain_high", threshold + DEFAULT_BAND))
 
-    threshold = float(np.clip(threshold, 0.01, 0.99))
-    band_low = float(np.clip(band_low, 0.0, 1.0))
-    band_high = float(np.clip(band_high, 0.0, 1.0))
+    # Round: band_low is computed as threshold - DEFAULT_BAND, which gives
+    # 0.45000000000000007 in binary floating point and shows up in the UI.
+    threshold = round(float(np.clip(threshold, 0.01, 0.99)), 4)
+    band_low = round(float(np.clip(band_low, 0.0, 1.0)), 4)
+    band_high = round(float(np.clip(band_high, 0.0, 1.0)), 4)
     if band_low >= band_high:
         band_low = max(0.0, threshold - DEFAULT_BAND)
         band_high = min(1.0, threshold + DEFAULT_BAND)

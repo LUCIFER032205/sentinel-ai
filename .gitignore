@@ -8,6 +8,11 @@ artifacts/
 !artifacts/
 artifacts/*
 !artifacts/ai_image_detector.keras
+# The served decision threshold lives here. Until it was tracked, the deployed
+# Space had no thresholds.json and silently fell back to DEFAULT_THRESHOLD in
+# inference.py - matching only because the two happened to hold the same value.
+!artifacts/thresholds.json
+!artifacts/metrics.json
 data/
 Real_vs_AI_Image_Checker_Report.docx
 report_assets/
