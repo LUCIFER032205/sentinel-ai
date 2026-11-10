@@ -76,8 +76,21 @@ def collect(folder: Path, limit: int | None, seed: int) -> list[tuple[Path, int]
 
 
 def score(model, items, args) -> tuple[np.ndarray, np.ndarray]:
-    """Return (probabilities, labels), flip-averaged exactly as inference.py does."""
+    """Return (probabilities, labels).
+
+    Two distinct noise stages, deliberately separate:
+      --noise        the ATTACK. Applied to the image, simulating what an adversary
+                     or a noisy camera does before the detector ever sees it.
+      --score-noise  a DEFENCE. A grain floor the detector itself adds to every
+                     input, so both classes arrive equally grainy and the relative
+                     noise-floor cue is destroyed. Applied after the attack.
+      --tta-noise    a DEFENCE. Score the image clean and grainy, average both.
+
+    Flip-averaging is always on, matching inference.py. --tta-noise doubles the
+    variants per image from 2 to 4.
+    """
     rng = np.random.default_rng(args.seed)
+    per_image = 4 if args.tta_noise else 2
     probabilities: list[float] = []
     labels: list[int] = []
     batch: list[np.ndarray] = []
@@ -87,7 +100,12 @@ def score(model, items, args) -> tuple[np.ndarray, np.ndarray]:
     def flush() -> None:
         if not batch:
             return
-        preds = model.predict(np.stack(batch), verbose=0).ravel().reshape(-1, 2).mean(1)
+        preds = (
+            model.predict(np.stack(batch), verbose=0)
+            .ravel()
+            .reshape(-1, per_image)
+            .mean(1)
+        )
         probabilities.extend(float(value) for value in preds)
         labels.extend(pending)
         batch.clear()
@@ -98,19 +116,27 @@ def score(model, items, args) -> tuple[np.ndarray, np.ndarray]:
         if image is None:
             skipped += 1
             continue
+        # --- attack stages ---
         if args.scale is not None:
             image = apply_scale(image, args.scale)
         if args.jpeg is not None:
             image = apply_jpeg(image, args.jpeg)
         if args.noise:
             image = apply_noise(image, args.noise, rng)
+        # --- defence stage: grain floor added by the detector itself ---
+        if args.score_noise:
+            image = apply_noise(image, args.score_noise, rng)
 
         prepared = preprocess_image(image)
         batch.append(prepared)
         batch.append(np.flip(prepared, axis=1))
+        if args.tta_noise:
+            noisy = preprocess_image(apply_noise(image, args.tta_noise, rng))
+            batch.append(noisy)
+            batch.append(np.flip(noisy, axis=1))
         pending.append(label)
 
-        if len(batch) >= args.batch_size * 2:
+        if len(batch) >= args.batch_size * per_image:
             flush()
         if args.progress and (index + 1) % 250 == 0:
             print(f"  ...{index + 1}/{len(items)}", file=sys.stderr, flush=True)
@@ -134,7 +160,14 @@ def main() -> None:
     )
     parser.add_argument("folder", type=Path, help="Folder containing real/ and fake/")
     parser.add_argument("--noise", type=float, default=None,
-                        help="Gaussian sigma in 0-255 pixel units, applied before preprocessing")
+                        help="ATTACK: Gaussian sigma in 0-255 pixel units, applied before preprocessing")
+    parser.add_argument("--score-noise", type=float, default=None,
+                        help="DEFENCE (grain-floor normalisation): sigma the detector adds to "
+                             "every input after the attack, so both classes arrive equally "
+                             "grainy. Combine with --noise to test it against the attack.")
+    parser.add_argument("--tta-noise", type=float, default=None,
+                        help="DEFENCE (noise-level TTA): also score a grainy copy at this sigma "
+                             "and average with the clean score. Doubles forward passes to 4.")
     parser.add_argument("--jpeg", type=int, default=None, help="Re-encode at this JPEG quality (1-100)")
     parser.add_argument("--scale", type=float, default=None,
                         help="Downscale by this factor then restore size, e.g. 0.5")
@@ -171,18 +204,21 @@ def main() -> None:
     recall = float(predicted_ai[is_ai].mean()) if is_ai.any() else float("nan")
     specificity = float((~predicted_ai[~is_ai]).mean()) if (~is_ai).any() else float("nan")
 
-    applied = [
-        name for name, value in
+    attacks = [
+        f"{name}={value:g}" for name, value in
         (("scale", args.scale), ("jpeg", args.jpeg), ("noise", args.noise))
+        if value
+    ]
+    defences = [
+        f"{name}={value:g}" for name, value in
+        (("score-noise", args.score_noise), ("tta-noise", args.tta_noise))
         if value
     ]
     print(f"folder     {args.folder}")
     print(f"images     {probabilities.size}  ({int((~is_ai).sum())} real / {int(is_ai.sum())} AI)")
     print(f"threshold  {threshold:.3f}" + ("" if args.threshold is None else "  (overridden)"))
-    print(f"perturb    {', '.join(applied) if applied else 'none'}"
-          + (f"  scale={args.scale}" if args.scale else "")
-          + (f"  jpeg=q{args.jpeg}" if args.jpeg else "")
-          + (f"  noise=sigma{args.noise:g}" if args.noise else ""))
+    print(f"attack     {', '.join(attacks) if attacks else 'none'}")
+    print(f"defence    {', '.join(defences) if defences else 'none'}")
     print()
     print(f"  accuracy          {accuracy*100:5.1f}%  +/-{interval(accuracy, probabilities.size):.1f}")
     print(f"  AI-recall         {recall*100:5.1f}%  +/-{interval(recall, int(is_ai.sum())):.1f}")

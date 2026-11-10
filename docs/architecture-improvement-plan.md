@@ -1,11 +1,13 @@
 # SENTINEL_AI — Architecture Improvement Plan
 
-Revision 4, 2026-11-10. Revisions 1-3 were reviewed and superseded; see
-`docs/review/zoom_out_report.md`, `zoom_out_report_rev2.md` and
-`comprehension_report.md`. Corrections are listed at the end under "What changed".
+Revision 5, 2026-11-10. Revisions 1-4 were reviewed and superseded; reports in
+`docs/review/`. Corrections are listed at the end under "What changed".
 
-**Items 0 and 1 are done.** Items are numbered in execution order. There is no
-separate priority list.
+**Items 0, 1 and 2 are done.** Item 2's result removed the plan's cheap path:
+both no-retrain defences were measured and both failed, so the retrain in item 4
+is now unavoidable and item 3's prerequisites are unconditional.
+
+Items are numbered in execution order. There is no separate priority list.
 
 ### Glossary
 
@@ -48,9 +50,9 @@ row A ±3.7, row B **±6.0**, row C ±2.6, row D ±1.8. Row E has none recorded.
 the images, so they are wider still — row B's AI-recall is **±8.9**. Any
 acceptance gate narrower than the relevant interval is undecidable.
 
-These assume independent images. `data/processed/real` contains burst sequences
-(`Burst01`…`Burst16`) that are near-duplicates of one moment, so the true
-intervals are wider than shown wherever those files are included.
+These assume independent images, which holds for rows A-D: `data/holdout_newdb`
+and `data/holdout_hard_mined` contain no burst sequences. The burst caveat applies
+only to item 2c, which scores training-set photos.
 
 Row E was produced by an older `train.py` than the one in the tree — its schema
 does not match what `train.py` writes today (see item 3). Treat it as historical.
@@ -74,7 +76,7 @@ regenerated from it in the same pass.
 
 | | |
 |---|---|
-| Model | MobileNetV2, ImageNet weights, frozen base then **last 45 layers** unfrozen (`train.py:192`) |
+| Model | MobileNetV2, ImageNet weights, frozen base then **last 45 layers** unfrozen (`train.py:196`) |
 | Input | 224×224, aspect squashed, preprocessed to [-1, 1] at load time (`data.py:26`) |
 | Scoring | flip-average, 2 forward passes, single threshold from `artifacts/thresholds.json` |
 | Training corpus | 24,763 real + 23,944 fake = **48,707 images** in `data/processed/` |
@@ -89,13 +91,15 @@ regenerated from it in the same pass.
   and 9:16. Squashing is fine.
 - Rotation test-time augmentation: 8-variant averaging scores below flip-average
   at 4× the cost.
-- **File format is not a cue, despite a skewed corpus.** `data/processed/real` is
+- **File format is not a measurable cue, despite a skewed corpus.** `data/processed/real` is
   0 PNG out of 24,763; `data/processed/fake` is 7,903 PNG out of 23,944, and the
   holdout repeats the skew (0/1,000 vs 267/999). A PNG carries no JPEG artifacts,
   so "no artifacts → fake" is learnable in principle. Measured: PNG fakes score
   0.858 mean p(AI) against 0.848 for JPEG fakes, a difference of **+0.010, CI
-  [-0.049, +0.060]** — indistinguishable from noise. The `--jpeg 30` run in item 1
-  agrees, since it converts PNG fakes to JPEG and barely moves. Worth fixing as
+  [-0.049, +0.060]** — indistinguishable from noise, though that interval still
+  admits an effect of up to ~0.06, so this is "not detectable at this sample size",
+  not "proven absent". The `--jpeg 30` run in item 1 agrees, since it converts PNG
+  fakes to JPEG and barely moves. Worth fixing as
   dataset hygiene before the next corpus expansion; **not** a reason to distrust
   rows A-D.
 
@@ -107,7 +111,7 @@ it is out of scope (see the end).
 
 ## Item 0 — DONE: training augmentation was destroying images
 
-`RandomContrast(0.1)` at `train.py:52` takes `value_range=(0, 255)` by default and
+`RandomContrast(0.1)` at `train.py:56` takes `value_range=(0, 255)` by default and
 **clips to that range**. Tensors arriving from `data.py:26` are in [-1, 1], so every
 value below mid-grey was clamped to 0.0. Measured: **54.5% of each augmented image
 was blanked to black**, and no negative value survived.
@@ -116,13 +120,17 @@ Fixed by passing `value_range=(-1, 1)`. Verified: the output range is restored t
 [-1, 1], negatives survive, and contrast still varies across draws.
 
 This is not a units subtlety like the one in item 4 — it is destructive clipping,
-and it affected every training run that produced the current model. **It must land
-before the item 3c re-baseline**, or the baseline measures a model trained on
-mutilated data. `RandomZoom` and `RandomRotation` do not have this fault.
+and it affected every training run that produced the current model, including the
+one behind every number in the pinned table. `RandomZoom` and `RandomRotation` do
+not have this fault.
+
+**Live consequence:** item 3c's re-baseline is the first run that will benefit, and
+until it happens nobody knows what this fix is worth. It could move accuracy on its
+own.
 
 ---
 
-## Item 1 — DONE: measurement harness is in the repository
+## Item 1 — DONE (with follow-ups listed at the end of this section)
 
 `eval_holdout.py` is committed. It is the only code in the tree that reads
 `data/holdout_*`.
@@ -176,24 +184,34 @@ contradicts both.
 
 ---
 
-## Item 2 — Free experiments, before committing to any retrain
+## Item 2 — DONE: the cheap fixes were tried and both failed
 
-A retrain on 48,707 images on a CPU-only student machine is the most expensive
-thing in this plan. These three experiments cost an afternoon between them and
-may make it unnecessary. **Run them before item 4 and report the result as the
-floor a retrain has to beat.**
+`eval_holdout.py` gained `--score-noise` (grain-floor normalisation) and
+`--tta-noise` (noise-level TTA) so these could actually be run. Measured on 200
+images per class from `holdout_newdb`, seed 0:
 
-**2a. Grain-floor normalisation (no retrain).** The root cause of the bypass is
-that the *relative* noise floor has become a cue — real photos carry sensor
-grain, AI images are smooth, so "clean" partly reads as "AI". Injecting a fixed
-σ≈8 grain into *every* input before scoring destroys that differential
-symmetrically. The attack becomes the preprocessing. Costs some clean accuracy
-and would invalidate the 0.55 threshold, so re-measure both.
+| Configuration | Accuracy | AI-recall |
+|---|---|---|
+| clean, no defence | 88.2% ±3.2 | 82.5% ±5.3 |
+| σ=16 attack, no defence | 77.2% ±4.1 | 56.5% ±6.9 |
+| σ=16 attack + grain floor σ=8 | 75.8% ±4.2 | **52.5%** ±6.9 |
+| σ=16 attack + noise-TTA σ=8 | 77.5% ±4.1 | **56.0%** ±6.9 |
+| σ=16 attack + grain floor σ=16 | 71.0% ±4.4 | **43.5%** ±6.9 |
+| σ=16 attack + noise-TTA σ=16 | 74.8% ±4.3 | **50.5%** ±6.9 |
 
-**2b. Noise-level test-time augmentation (no retrain).** Score at σ=0 and σ=8
-and average. `inference.py` already stacks two variants into one batch, so this
-is two array operations inside the existing design. Doubles forward passes from
-2 to 4 — still half the cost of the rotation TTA already rejected.
+Neither defence recovers any recall at any setting tried, and both *cost*
+accuracy on clean input — the grain floor drops it from 88.2% to 81.2%, TTA to
+85.2%.
+
+**Why the theory failed.** The premise was that the model reads a *relative* noise
+floor, so equalising it would destroy the cue. The model's response to noise turns
+out to be **monotonic, not differential**: adding grain pushes everything toward
+"Real" regardless of class. Real-specificity climbs to 99% while recall collapses.
+You cannot equalise a cue by adding noise to a model that has no noise invariance —
+only training can give it that.
+
+**Consequence: there is no cheap path.** Item 4's retrain is necessary, item 3's
+prerequisites are unconditional, and the branch this plan was built around is gone.
 
 **2c. Score the 710 phone photos already in the corpus.** `data/processed/real/`
 contains 710 `phone_real_IMG_*.jpg` files: genuine phone photos, non-square,
@@ -205,50 +223,52 @@ Caveat: these are not 710 independent scenes — `Burst01`…`Burst16` are
 near-duplicates of a single moment. Report distinct scenes, not file count, and
 group-split by scene if they are ever held out.
 
-**Decision rule.** Judge 2a and 2b against item 4's own bar, so the comparison is
-like-for-like:
+**Still to do here:** 2c. Reproduce with:
 
 ```
-python eval_holdout.py data/holdout_newdb --noise 16 --check-recall 0.70
-python eval_holdout.py data/holdout_newdb --check 0.85
+python eval_holdout.py data/holdout_newdb --noise 16 --score-noise 8
+python eval_holdout.py data/holdout_newdb --noise 16 --tta-noise 8
 ```
 
-If either experiment clears σ=16 AI-recall of 70% **while** clean accuracy stays
-within 3 points of row C's 88.2%, item 4 downgrades from a retrain to a
-preprocessing change. If one clears the recall bar but not the clean bar, record
-both numbers as the floor the retrain must beat rather than treating it as a pass.
-
-2a and 2b compose — 2a changes the input, 2b averages over input variants — but
-measure each alone first, or a failure cannot be attributed. Both shift the score
-distribution, so **both invalidate the 0.55 threshold**; 2a's "re-measure both"
-means clean accuracy and the threshold.
-
-Secondary consequence of 2a: injected noise makes serving non-deterministic, so the
-same upload can return different scores. Seed it per request or accept the variance
-deliberately.
+**The floor item 4 must beat is therefore 56.5% σ=16 recall** — the undefended
+number — not anything these two produced.
 
 ---
 
 ## Item 3 — Retrain prerequisites
 
-Only needed if item 2 does not dissolve item 4. **These are blocking: skipping
-them makes the retrain's result uninterpretable.**
+Item 2 established there is no cheap path, so these are **unconditional**, not
+contingent. Skipping any of them makes the retrain's result uninterpretable.
+
+Do 3b and 3b-bis **first and today**, before any further measurement: they protect
+an artifact that nothing in the repo can regenerate, and every remaining item in
+this plan touches it.
 
 **3a. `load_dataset` cannot load this corpus.** `data.py:29` decodes and
 preprocesses every image into one resident float32 array: 48,707 × 224×224×3 × 4
-bytes ≈ **29 GB** before batching. Move to `tf.data` with map-decode, or
-`tf.keras.utils.image_dataset_from_directory`, or pin a fixed subset. Per-epoch
-decode will slow epochs on a disk-bound machine; `.cache()` to a local file
-recovers most of it.
+bytes ≈ **29 GB** before batching. Per-epoch decode will slow epochs on a
+disk-bound machine; `.cache()` to a local file recovers most of it.
 
-**3b. Snapshot the artifacts first.** `train.py:221` overwrites
-`artifacts/thresholds.json` and `train.py:224` overwrites
+Three options, **not interchangeable**:
+
+1. **`tf.data` with map-decode, keeping `preprocess_image`.** Preferred. The
+   normalisation stays where it is, so item 4's σ table stays valid.
+2. **Pin a fixed subset.** Safe, loses data.
+3. **`tf.keras.utils.image_dataset_from_directory`.** ⚠ It does **not** apply
+   `preprocess_input`, so tensors arrive in [0, 255] instead of [-1, 1]. Every σ in
+   item 4 would then be ~127× too weak, and the augmenter's `value_range=(-1, 1)`
+   from item 0 would be wrong again in the opposite direction. If you take this
+   route you must move normalisation explicitly and re-derive the σ table. The
+   failure is silent and shows up only after a multi-day retrain.
+
+**3b. Snapshot the artifacts first.** `train.py:225` overwrites
+`artifacts/thresholds.json` and `train.py:228` overwrites
 `artifacts/metrics.json`. Both are currently hand-shaped:
 
 - `thresholds.json` holds threshold 0.55 and a `tuning_note` that
   `find_best_threshold` never writes. **The served threshold is a value no code
   in the repo can regenerate.** The first retrain silently reverts it.
-- `metrics.json` has a flat schema; `train.py:135` writes a nested one. The
+- `metrics.json` has a flat schema; `train.py:139` writes a nested one. The
   committed file was not produced by the current `train.py`.
 - `artifacts/metrics_before_retrain_20260326_150355.json` suggests this has
   bitten once already.
@@ -308,8 +328,9 @@ example across the measured attack range (0 to 0.125 preprocessed) rather than
 fixing it, and applying it to a fraction of each batch so clean inputs stay in
 distribution. Blur is optional and carries little of the value.
 
-While editing that block, check `RandomContrast(0.1)` and `RandomZoom` — they
-operate on the same pre-normalised tensors and carry the identical unit hazard.
+`RandomContrast` was the only layer with a value-range hazard and item 0 fixed it.
+`RandomZoom` and `RandomRotation` are range-agnostic and need no change. Re-check
+this only if item 3a moves where normalisation happens.
 
 **Acceptance.** Two gates, both via item 1's script. Run the full
 `holdout_newdb` (no `--limit`) so the interval is as tight as the data allows:
@@ -327,7 +348,7 @@ python eval_holdout.py data/holdout_newdb --check <re-baseline minus 0.03>
    re-baseline. The floor is computed from that run, not hardcoded here, because
    3c has not happened yet; writing a literal now would reintroduce the stale
    baseline 3c exists to remove. If item 2 dissolved the retrain and 3c never ran,
-   use row C's 88.2% and the floor is 0.85.
+   use row C's 88.2%, making the floor 0.852.
 
 3 points, not revision 2's 1.5, because 1.5 sits inside row C's own ±2.6 interval —
 a gate that cannot be failed honestly is not a gate.
@@ -378,7 +399,7 @@ that the synthetic transform resembles the real save path.
 
 ## Item 6 — Backbone, only after items 1–4
 
-**6a. Unfreeze more layers.** `train.py:192` already passes
+**6a. Unfreeze more layers.** `train.py:196` already passes
 `trainable_layers=45`; the 30 in `model.py:45` is a default no caller uses.
 Revision 1 said 30 and pointed at the wrong file. **The 30 → 45 experiment has
 already been run and its result was never recorded**, which lowers the expected
@@ -422,7 +443,7 @@ a branch sharing the backbone's weights.
 ## Item 7 — Small fixes
 
 - **The threshold is fitted on the wrong score distribution — but only fix this
-  if the search survives.** `train.py:219` fits it on `predict_probabilities`, a
+  if the search survives.** `train.py:223` fits it on `predict_probabilities`, a
   single forward pass, while both serving and `calibrate_thresholds.py`
   flip-average two. This matters only while `find_best_threshold` still chooses
   the served value. The out-of-scope section recommends deleting that search and
@@ -469,8 +490,8 @@ Listed so they are explicitly declined rather than quietly dropped.
 - **Bootstrapped threshold search.** Revision 1 proposed ~20 lines to re-derive a
   result the repo already records: `thresholds.json` states that 0.50 and 0.55
   are statistically tied. `calibrate_thresholds.py:80` already clips to
-  [0.35, 0.65] and its `best < default + 0.02` guard demonstrably fired for the
-  current file, so the unguarded ±0.24 swing cited in revision 1 cannot reach any
+  [0.35, 0.65] and its `best < default + 0.02` guard at `:75` demonstrably fired
+  for the current file, so the unguarded ±0.24 swing cited in revision 1 cannot reach any
   written artifact. **The correct move is a deletion, not an addition:** freeze
   the threshold, cite the existing note, and remove the search. Item 3b still
   applies — the frozen value has to survive a retrain, and today it is not even
@@ -482,6 +503,36 @@ Listed so they are explicitly declined rather than quietly dropped.
 ---
 
 ## What changed
+
+### Revision 5
+
+Stage 7 (design / structural / style critics) raised 3 Blockers, all of them
+re-raises of earlier findings that previous revisions had answered in prose rather
+than in code. Acting on the first one settled the plan's central question.
+
+- **Item 2 was unrunnable.** Its decision-rule commands applied `--noise` once, as
+  an attack. 2a and 2b are *defences* — a second noise stage and a second scoring
+  pass — and `eval_holdout.py` could express neither, so both commands would have
+  measured the unmodified system and reported it as a result. Fixed by adding
+  `--score-noise` and `--tta-noise`, then running them: **both defences failed**,
+  which deleted the cheap path and with it most of this document's branching.
+- **Item 3's prerequisites were gated behind the branch that did not need them.**
+  On the cheap path, 2a's threshold re-measurement would have overwritten the
+  untracked `thresholds.json` and destroyed the `tuning_note` the out-of-scope
+  section tells the reader to cite. Now unconditional, and flagged do-this-first.
+- **Item 3a offered three loaders as equivalents.** `image_dataset_from_directory`
+  does not apply `preprocess_input`, which would invert item 4's entire σ table and
+  train the noise ~127× too weak — discoverable only after a multi-day retrain.
+  Now marked, with the preferred option named.
+- **Every `train.py` citation at or after line 52 was off by +4**, caused by item
+  0's own four-line comment. Corrected against the file.
+- **The burst-sequence caveat was attached to the wrong data.** No `Burst*` files
+  exist in `data/holdout_newdb`; they are in `data/processed/real`, so the caveat
+  belongs to item 2c alone and rows A-D are unaffected.
+- Corrected: item 4's block told the reader to check `RandomZoom` for a hazard the
+  same document says it does not have; item 0 was still scheduling itself as future
+  work; "File format is not a cue" was a bolded negative existence claim on an
+  interval that admits an effect up to 0.06.
 
 ### Revision 4
 
@@ -540,7 +591,7 @@ Errors of fact in revision 1, all verified against the code:
    augmentation, so the constant was in [-1, 1] units: σ≈3.8 pixel units, not the
    σ=16 it was meant to defend against. The acceptance test also never checked
    σ=16.
-2. **The unfrozen layer count is 45, not 30**, set at `train.py:192`. Revision 1
+2. **The unfrozen layer count is 45, not 30**, set at `train.py:196`. Revision 1
    pointed at a default no caller uses, so following it would have changed
    nothing.
 3. **Real-world phone photos were said to need collecting.** 710 are already in
