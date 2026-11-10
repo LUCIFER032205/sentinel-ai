@@ -2,38 +2,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
 from src.ai_image_detector.inference import (
-    CalibrationConfig,
+    load_calibration,
     load_trained_model,
     predict_image_bytes,
 )
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
-
-MODE_CONFIGS = {
-    "default": {
-        "calibration": CalibrationConfig(
-            threshold=0.65,
-            uncertain_low=0.45,
-            uncertain_high=0.70,
-        ),
-        "orientation_conservative": True,
-    },
-    "sensitive": {
-        "calibration": CalibrationConfig(
-            threshold=0.40,
-            uncertain_low=0.30,
-            uncertain_high=0.50,
-        ),
-        "orientation_conservative": False,
-    },
-}
 
 app = FastAPI(title="SENTINEL_AI")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -42,6 +23,9 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 @app.on_event("startup")
 def cache_model() -> None:
     app.state.model = load_trained_model()
+    # Read the threshold from artifacts/thresholds.json rather than hardcoding
+    # it, so retraining re-tunes the served detector automatically.
+    app.state.calibration = load_calibration()
 
 
 @app.get("/health")
@@ -49,21 +33,28 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-async def run_prediction(upload: UploadFile, mode: str) -> dict[str, float | str]:
+@app.get("/calibration")
+async def calibration() -> dict[str, float]:
+    """Expose the live threshold so the frontend cannot drift out of sync."""
+    config = app.state.calibration
+    return {
+        "threshold": config.threshold,
+        "band_low": config.band_low,
+        "band_high": config.band_high,
+    }
+
+
+async def run_prediction(upload: UploadFile) -> dict[str, float | str | bool]:
     payload = await upload.read()
     if not payload:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
-    settings = MODE_CONFIGS.get(mode)
-    if settings is None:
-        raise HTTPException(status_code=400, detail=f"Unsupported mode: {mode}")
     try:
         result = await run_in_threadpool(
             predict_image_bytes,
             app.state.model,
             payload,
-            settings["calibration"],
-            settings["orientation_conservative"],
+            app.state.calibration,
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(
@@ -75,6 +66,7 @@ async def run_prediction(upload: UploadFile, mode: str) -> dict[str, float | str
         "label": result.label,
         "ai_probability": float(result.ai_probability),
         "confidence": float(result.confidence),
+        "low_confidence": bool(result.low_confidence),
     }
 
 
@@ -84,24 +76,20 @@ async def serve_index() -> FileResponse:
 
 
 @app.post("/predict")
-async def predict(
-    file: UploadFile = File(...),
-    mode: str = Form("default"),
-) -> dict[str, float | str]:
-    return await run_prediction(file, mode)
+async def predict(file: UploadFile = File(...)) -> dict[str, float | str | bool]:
+    return await run_prediction(file)
 
 
 @app.post("/predict/batch")
 async def predict_batch(
     files: list[UploadFile] = File(...),
-    mode: str = Form("default"),
-) -> list[dict[str, float | str]]:
+) -> list[dict[str, float | str | bool]]:
     if not files:
         raise HTTPException(status_code=400, detail="Upload at least one image.")
 
-    results: list[dict[str, float | str]] = []
+    results: list[dict[str, float | str | bool]] = []
     for upload in files:
-        row = await run_prediction(upload, mode)
+        row = await run_prediction(upload)
         row["filename"] = upload.filename or "upload"
         results.append(row)
 

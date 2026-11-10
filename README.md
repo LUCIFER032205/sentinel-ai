@@ -14,8 +14,9 @@ short_description: FastAPI AI image detector with batch scan support
 A FastAPI app that tells whether an image is AI-generated or a real photo. It uses a fine-tuned MobileNetV2 model and serves a dark HTML frontend.
 
 - Single-image and batch prediction
-- Two scan modes: `default` (fewer false alarms) and `sensitive` (catches more AI images)
-- 88.8% accuracy on a 1,000-image test set (F1 0.884 on AI-generated images)
+- One tuned decision threshold, read at startup from `artifacts/thresholds.json` - no modes to choose
+- Scores close to the threshold are returned with a `low_confidence` flag rather than a separate verdict
+- ~89% accuracy on held-out images (80% AI recall, 86% real-photo specificity at threshold 0.55)
 
 ## Run locally
 
@@ -49,14 +50,39 @@ Open http://127.0.0.1:7860.
 |-------|-------------|
 | `GET /` | Frontend (`static/index.html`) |
 | `GET /health` | Health check |
-| `POST /predict` | Form fields: `file`, optional `mode` (`default` or `sensitive`) |
-| `POST /predict/batch` | Form fields: `files` (multiple), optional `mode` |
+| `GET /calibration` | Live threshold and borderline band |
+| `POST /predict` | Form field: `file` |
+| `POST /predict/batch` | Form field: `files` (multiple) |
 
 Response:
 
 ```json
-{ "label": "AI-generated", "ai_probability": 0.94, "confidence": 0.88 }
+{ "label": "AI-generated", "ai_probability": 0.94, "confidence": 0.88, "low_confidence": false }
 ```
+
+`label` is always `Real` or `AI-generated`. `low_confidence` is true when the score falls
+inside the borderline band around the threshold, where the model is close to a coin flip
+(about 7% of uploads).
+
+## Accuracy and limits
+
+Measured on 1,600 held-out images (`data/holdout_newdb`, `data/holdout_hard_mined`):
+
+| Input | Accuracy |
+|-------|----------|
+| Ordinary images | ~89% |
+| Adversarially hard-mined images | ~73% |
+| JPEG re-compression down to q30, downscaling, screenshots | no measurable change |
+| Images with added grain (Gaussian noise, sigma 16) | 75%, AI recall falls to 56% |
+
+Two known gaps:
+
+- **Added grain defeats it.** Noise pushes AI images toward the "Real" verdict much harder
+  than it pushes real photos (mean shift -0.29 vs -0.08). Training has no noise augmentation,
+  so grain is off-distribution. Adding it to the augmentation in `train.py` is the fix.
+- **Non-square images are barely tested.** Roughly 89% of the training set and 100% of the
+  real-photo holdout set are square 1024x1024. Phone photos and screenshots are not, and no
+  number here covers them.
 
 ## Retraining
 

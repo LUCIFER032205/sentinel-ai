@@ -20,6 +20,8 @@ def main() -> None:
     print(f"Prediction: {result.label}")
     print(f"Confidence: {result.confidence:.2%}")
     print(f"AI probability: {result.ai_probability:.2%}")
+    if result.low_confidence:
+        print("Note: borderline score, close to the decision threshold.")
 
 
 if __name__ == "__main__":

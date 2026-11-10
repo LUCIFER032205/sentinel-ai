@@ -170,20 +170,11 @@
               SENTINEL_AI
             </h1>
             <p class="mt-4 max-w-3xl text-sm leading-7 text-slate-300 md:text-base">
-              Neural artifact screening for single uploads and batch sweeps. Choose a balanced scan or shift into an AI-sensitive profile when you want the detector to react faster to synthetic cues.
+              Neural artifact screening for single uploads and batch sweeps. Upload an image and the detector returns a verdict - no profiles to pick, no settings to get wrong.
             </p>
           </div>
         </div>
       </header>
-
-      <div class="mt-8 flex flex-wrap gap-3" id="modeTabs">
-        <button type="button" data-mode="default" class="tab-active rounded-full border px-5 py-2.5 text-sm transition">
-          <span class="font-display">Default Scan</span>
-        </button>
-        <button type="button" data-mode="sensitive" class="tab-idle rounded-full border px-5 py-2.5 text-sm transition">
-          <span class="font-display">AI-Sensitive</span>
-        </button>
-      </div>
 
       <section class="mt-8 grid gap-8 lg:grid-cols-[3fr_2fr] lg:items-start">
         <article class="scan-shell glass rounded-[30px] px-6 py-7 md:px-8 md:py-8" id="singlePanel">
@@ -194,23 +185,19 @@
             <div class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
               <div class="max-w-2xl">
                 <p class="label-mini text-cyan-200">Active Calibration</p>
-                <h2 id="modeTitle" class="mt-3 font-display text-3xl text-white">Default Scan</h2>
-                <p id="modeDescription" class="mt-3 text-sm leading-7 text-slate-300">
-                  Balanced mode for everyday checks with orientation-conservative scoring.
+                <h2 class="mt-3 font-display text-3xl text-white">Single Scan Profile</h2>
+                <p class="mt-3 text-sm leading-7 text-slate-300">
+                  One tuned decision threshold, read live from the trained model's calibration file.
                 </p>
               </div>
               <div class="flex flex-wrap gap-5 text-sm" id="calibrationStats">
                 <div>
                   <div class="label-mini">Threshold</div>
-                  <div id="thresholdValue" class="mt-2 font-display text-2xl text-cyan-100">65%</div>
+                  <div id="thresholdValue" class="mt-2 font-display text-2xl text-cyan-100">--</div>
                 </div>
                 <div>
-                  <div class="label-mini">Uncertain Low</div>
-                  <div id="uncertainLowValue" class="mt-2 font-display text-2xl text-cyan-100">45%</div>
-                </div>
-                <div>
-                  <div class="label-mini">Uncertain High</div>
-                  <div id="uncertainHighValue" class="mt-2 font-display text-2xl text-cyan-100">70%</div>
+                  <div class="label-mini">Borderline Band</div>
+                  <div id="bandValue" class="mt-2 font-display text-2xl text-cyan-100">--</div>
                 </div>
               </div>
             </div>
@@ -287,11 +274,11 @@
                 <div id="confidenceValue" class="mt-3 value-big">0.00%</div>
               </div>
               <div>
-                <div class="label-mini">Mode</div>
-                <div id="activeModeEcho" class="mt-3 font-display text-4xl text-white">Default</div>
+                <div class="label-mini">Signal</div>
+                <div id="signalValue" class="mt-3 font-display text-4xl text-white">--</div>
               </div>
             </div>
-            <pre id="singleJsonOutput" class="hidden">{ "label": "-", "ai_probability": 0, "confidence": 0 }</pre>
+            <pre id="singleJsonOutput" class="hidden">{ "label": "-", "ai_probability": 0, "confidence": 0, "low_confidence": false }</pre>
             <p id="singleStatus" class="hidden">The detector will respond here as soon as an upload completes.</p>
           </div>
         </aside>
@@ -354,33 +341,8 @@
   </div>
 
   <script>
-    const modeConfigs = {
-      default: {
-        title: "Default Scan",
-        description: "Balanced mode for everyday checks with orientation-conservative scoring.",
-        threshold: 0.65,
-        uncertainLow: 0.45,
-        uncertainHigh: 0.70,
-        modeEcho: "Default"
-      },
-      sensitive: {
-        title: "AI-Sensitive",
-        description: "Stricter mode with a lower threshold when you want the detector to catch AI cues faster.",
-        threshold: 0.40,
-        uncertainLow: 0.30,
-        uncertainHigh: 0.50,
-        modeEcho: "Sensitive"
-      }
-    };
-
-    let activeMode = "default";
-
-    const modeTabs = document.querySelectorAll("[data-mode]");
-    const modeTitle = document.getElementById("modeTitle");
-    const modeDescription = document.getElementById("modeDescription");
     const thresholdValue = document.getElementById("thresholdValue");
-    const uncertainLowValue = document.getElementById("uncertainLowValue");
-    const uncertainHighValue = document.getElementById("uncertainHighValue");
+    const bandValue = document.getElementById("bandValue");
     const singleFileInput = document.getElementById("singleFileInput");
     const clearSingleButton = document.getElementById("clearSingleButton");
     const singleFileName = document.getElementById("singleFileName");
@@ -390,7 +352,7 @@
     const aiProbabilityText = document.getElementById("aiProbabilityText");
     const probabilityBarFill = document.getElementById("probabilityBarFill");
     const confidenceValue = document.getElementById("confidenceValue");
-    const activeModeEcho = document.getElementById("activeModeEcho");
+    const signalValue = document.getElementById("signalValue");
     const singleJsonOutput = document.getElementById("singleJsonOutput");
     const singleStatus = document.getElementById("singleStatus");
     const batchFileInput = document.getElementById("batchFileInput");
@@ -424,32 +386,25 @@
       singleFileName.textContent = name || "No file selected.";
     }
 
-    function updateMode(mode) {
-      activeMode = mode;
-      const config = modeConfigs[mode];
-      modeTitle.textContent = config.title;
-      modeDescription.textContent = config.description;
-      thresholdValue.textContent = formatPercent(config.threshold);
-      uncertainLowValue.textContent = formatPercent(config.uncertainLow);
-      uncertainHighValue.textContent = formatPercent(config.uncertainHigh);
-      activeModeEcho.textContent = config.modeEcho;
-      const queuedCount = batchFileInput.files?.length || 0;
-      batchSelectionText.textContent = queuedCount
-        ? `${queuedCount} file(s) queued for ${config.title}.`
-        : "No files queued.";
-
-      modeTabs.forEach((tab) => {
-        const isActive = tab.dataset.mode === mode;
-        tab.classList.toggle("tab-active", isActive);
-        tab.classList.toggle("tab-idle", !isActive);
-      });
+    async function loadCalibration() {
+      try {
+        const response = await fetch("/calibration");
+        if (!response.ok) {
+          throw new Error("calibration unavailable");
+        }
+        const config = await response.json();
+        thresholdValue.textContent = formatPercent(config.threshold);
+        bandValue.textContent = `${formatPercent(config.band_low)} - ${formatPercent(config.band_high)}`;
+      } catch {
+        thresholdValue.textContent = "n/a";
+        bandValue.textContent = "n/a";
+      }
     }
 
     function setLabelBadge(label) {
       const theme = {
         "AI-generated": "border-rose-400/35 bg-rose-400/10 text-rose-100",
         "Real": "border-emerald-400/35 bg-emerald-400/10 text-emerald-100",
-        "Uncertain": "border-amber-300/35 bg-amber-300/10 text-amber-100",
         "Idle": "border-slate-700 bg-slate-900/70 text-slate-300"
       };
 
@@ -464,13 +419,23 @@
       confidenceValue.textContent = formatPercent(result.confidence);
       probabilityBarFill.style.width = `${Math.max(0, Math.min(100, result.ai_probability * 100))}%`;
       singleJsonOutput.textContent = JSON.stringify(result, null, 2);
-      singleStatus.textContent = `Completed using ${modeConfigs[activeMode].title}.`;
+      if (result.low_confidence) {
+        signalValue.textContent = "Borderline";
+        signalValue.className = "mt-3 font-display text-4xl text-amber-200";
+        singleStatus.textContent = "Borderline - this score sits close to the decision line, where the model is near a coin flip.";
+      } else {
+        signalValue.textContent = "Clear";
+        signalValue.className = "mt-3 font-display text-4xl text-white";
+        singleStatus.textContent = "Scan complete.";
+      }
     }
 
     function renderSingleError(message) {
       setLabelBadge("Idle");
       aiProbabilityText.textContent = "0.00%";
       confidenceValue.textContent = "0.00%";
+      signalValue.textContent = "--";
+      signalValue.className = "mt-3 font-display text-4xl text-white";
       probabilityBarFill.style.width = "0%";
       singleJsonOutput.textContent = JSON.stringify({ error: message }, null, 2);
       singleStatus.textContent = message;
@@ -492,7 +457,6 @@
     async function submitSingle(file) {
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("mode", activeMode);
 
       setLoading(singlePanel, true);
       setLoading(resultPanel, true);
@@ -535,16 +499,13 @@
       }
 
       batchTableBody.innerHTML = rows.map((row) => {
-        const labelTone = row.label === "AI-generated"
-          ? "text-rose-200"
-          : row.label === "Real"
-            ? "text-emerald-200"
-            : "text-amber-200";
+        const labelTone = row.label === "AI-generated" ? "text-rose-200" : "text-emerald-200";
+        const flag = row.low_confidence ? " <span class=\"text-amber-200\">(borderline)</span>" : "";
 
         return `
           <tr class="hover:bg-white/5">
             <td class="px-4 py-4 font-medium text-slate-100">${escapeHtml(row.filename)}</td>
-            <td class="px-4 py-4 ${labelTone}">${escapeHtml(row.label)}</td>
+            <td class="px-4 py-4 ${labelTone}">${escapeHtml(row.label)}${flag}</td>
             <td class="px-4 py-4">${formatPercent(row.ai_probability)}</td>
             <td class="px-4 py-4">${formatPercent(row.confidence)}</td>
           </tr>
@@ -561,10 +522,9 @@
 
       const formData = new FormData();
       files.forEach((file) => formData.append("files", file));
-      formData.append("mode", activeMode);
 
       setLoading(batchPanel, true);
-      batchStatus.textContent = `Running ${files.length} file(s) through ${modeConfigs[activeMode].title}...`;
+      batchStatus.textContent = `Running ${files.length} file(s)...`;
 
       try {
         const response = await fetch("/predict/batch", {
@@ -576,7 +536,10 @@
           throw new Error(payload.detail || "Batch prediction failed.");
         }
         renderBatchTable(payload);
-        batchStatus.textContent = `Processed ${payload.length} file(s) with ${modeConfigs[activeMode].title}.`;
+        const borderline = payload.filter((row) => row.low_confidence).length;
+        batchStatus.textContent = borderline
+          ? `Processed ${payload.length} file(s). ${borderline} borderline.`
+          : `Processed ${payload.length} file(s).`;
       } catch (error) {
         batchTableBody.innerHTML = `
           <tr>
@@ -588,10 +551,6 @@
         setLoading(batchPanel, false);
       }
     }
-
-    modeTabs.forEach((tab) => {
-      tab.addEventListener("click", () => updateMode(tab.dataset.mode));
-    });
 
     singleFileInput.addEventListener("change", () => {
       const file = singleFileInput.files?.[0];
@@ -606,14 +565,14 @@
     batchFileInput.addEventListener("change", () => {
       const count = batchFileInput.files?.length || 0;
       batchSelectionText.textContent = count
-        ? `${count} file(s) queued for ${modeConfigs[activeMode].title}.`
+        ? `${count} file(s) queued.`
         : "No files queued.";
     });
 
     clearSingleButton.addEventListener("click", clearSingleUpload);
     clearBatchButton.addEventListener("click", clearBatchUpload);
     batchSubmitButton.addEventListener("click", submitBatch);
-    updateMode(activeMode);
+    loadCalibration();
     setLabelBadge("Idle");
     clearSingleButton.textContent = "X Clear";
     clearBatchButton.textContent = "X Clear";
