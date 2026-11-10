@@ -49,7 +49,11 @@ def make_datasets(
             tf.keras.layers.RandomFlip("horizontal"),
             tf.keras.layers.RandomRotation(0.05),
             tf.keras.layers.RandomZoom(0.1),
-            tf.keras.layers.RandomContrast(0.1),
+            # value_range MUST match the tensor range. data.py applies
+            # preprocess_input at load time, so images arrive in [-1, 1]; the
+            # Keras default of (0, 255) clips every negative value to 0.0,
+            # which blanks roughly 55% of each augmented image.
+            tf.keras.layers.RandomContrast(0.1, value_range=(-1, 1)),
         ]
     )
 
