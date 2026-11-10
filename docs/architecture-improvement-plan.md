@@ -1,20 +1,39 @@
 # SENTINEL_AI — Architecture Improvement Plan
 
-Revision 3, 2026-11-10. Revisions 1 and 2 were both reviewed and superseded; see
-`docs/review/zoom_out_report.md` and `docs/review/zoom_out_report_rev2.md`.
-Corrections are listed at the end under "What changed".
+Revision 4, 2026-11-10. Revisions 1-3 were reviewed and superseded; see
+`docs/review/zoom_out_report.md`, `zoom_out_report_rev2.md` and
+`comprehension_report.md`. Corrections are listed at the end under "What changed".
 
-**Item 1 is now done** and item 0 (a training bug found during review) is fixed.
+**Items 0 and 1 are done.** Items are numbered in execution order. There is no
+separate priority list.
 
-Items are numbered in execution order. There is no separate priority list.
+### Glossary
+
+Terms used throughout, defined once here.
+
+| Term | Meaning |
+|---|---|
+| `holdout_newdb` | 1,999 images (1,000 real / 999 AI) in `data/holdout_newdb/`, held out of training. The general-purpose evaluation set. |
+| `holdout_hard_mined` | 600 images (300/300) in `data/holdout_hard_mined/`, selected *because* an earlier model scored them near its threshold. Adversarially hard by construction, so ~75% there is expected, not a regression. Filenames carry the mining score. |
+| flip-average | Score the image and its horizontal mirror, average the two **probabilities**. This is what `inference.py` serves and what every row below uses. |
+| AI-recall | Fraction of genuinely AI images called AI-generated. |
+| real-spec | Real-class specificity: fraction of genuine photos called Real. |
+| band | The range around the threshold (currently 0.45-0.65) in which a score is flagged `low_confidence`. It does **not** change the verdict - every upload still returns Real or AI-generated. |
+| "served over HTTP" | Scored by POSTing to the running FastAPI app, exercising the real upload path. Offline rows call the model directly. Both use identical scoring; HTTP rows additionally prove the serving path is wired correctly. |
+| `REPORT.md` | The project's academic write-up. It quotes older accuracy figures and currently contradicts both this document and `README.md`. |
+
+The project is a FastAPI app (`main.py`) serving a web frontend
+(`static/index.html`) plus a CLI (`predict.py`), deployed as a Docker Space on
+Hugging Face.
 
 ---
 
 ## Pinned numbers
 
 Every accuracy figure in this document refers to a row below. Nothing else is a
-headline number. All rows use flip-averaged scoring at threshold 0.55 unless the
-row says otherwise.
+headline number. Rows A-D use flip-averaged scoring at threshold 0.55. **Row E is
+neither** — it is a single forward pass at 0.50, written by `train.py`, which is
+itself the defect item 7 records.
 
 | ID | Dataset | Images | Threshold | Accuracy | AI-recall | Real-spec |
 |----|---------|--------|-----------|----------|-----------|-----------|
@@ -24,8 +43,8 @@ row says otherwise.
 | **D** | `holdout_newdb` + `holdout_hard_mined`, offline | 1600 | 0.55 | 83.2% | 80.2% | 86.2% |
 | **E** | internal train/test split, `artifacts/metrics.json` | 1000 | 0.50 | 88.8% | 89.0% | 88.7% |
 
-Confidence intervals differ per row and are wider than revision 2 claimed:
-row A ±3.7, row B **±6.0**, row C ±2.6, row D ±1.8. Per-class columns use half
+Confidence intervals are 95%, in percentage points, and differ per row:
+row A ±3.7, row B **±6.0**, row C ±2.6, row D ±1.8. Row E has none recorded. Per-class columns use half
 the images, so they are wider still — row B's AI-recall is **±8.9**. Any
 acceptance gate narrower than the relevant interval is undecidable.
 
@@ -35,6 +54,14 @@ intervals are wider than shown wherever those files are included.
 
 Row E was produced by an older `train.py` than the one in the tree — its schema
 does not match what `train.py` writes today (see item 3). Treat it as historical.
+
+**All rows predate item 0's fix.** They measure the model trained while
+`RandomContrast` was blanking 54.5% of every augmented image. They remain the
+reference points for item 4's gate, because that gate measures a *change* and both
+sides of the comparison must come from the same model. They are **not** a forecast
+of what a correctly trained model scores. Item 3c re-baselines them; on the cheap
+path where item 2 succeeds and no retrain happens, the current model and these rows
+continue to describe each other correctly.
 
 **`README.md` currently quotes row D's recall and specificity beside row A's
 accuracy.** Both numbers are real but they come from different sets. Item 1
@@ -67,7 +94,7 @@ regenerated from it in the same pass.
   holdout repeats the skew (0/1,000 vs 267/999). A PNG carries no JPEG artifacts,
   so "no artifacts → fake" is learnable in principle. Measured: PNG fakes score
   0.858 mean p(AI) against 0.848 for JPEG fakes, a difference of **+0.010, CI
-  [-0.049, +0.060]** — indistinguishable from noise. The `--jpeg 30` row above
+  [-0.049, +0.060]** — indistinguishable from noise. The `--jpeg 30` run in item 1
   agrees, since it converts PNG fakes to JPEG and barely moves. Worth fixing as
   dataset hygiene before the next corpus expansion; **not** a reason to distrust
   rows A-D.
@@ -102,33 +129,41 @@ mutilated data. `RandomZoom` and `RandomRotation` do not have this fault.
 
 ```
 python eval_holdout.py data/holdout_newdb [--noise S] [--jpeg Q] [--scale F]
-                       [--limit N] [--seed N] [--threshold T] [--check MIN]
+                       [--limit N] [--seed N] [--threshold T]
+                       [--check MIN] [--check-recall MIN]
 ```
 
 It reuses `data.iter_image_files` and `data.preprocess_image`, reads the live
 threshold through `inference.load_calibration`, and flip-averages exactly as
 `inference.py` does. Perturbations are applied to the decoded 0-255 BGR image
 **before** preprocessing and before the 224 resize, matching how the published
-numbers were measured; `--check` exits non-zero below a floor, which makes it the
-smoke test item 7 asked for.
+numbers were measured.
+
+`--check` gates **accuracy**; `--check-recall` gates **AI-recall**. Both can be
+given at once and either failing exits non-zero. Robustness gates need
+`--check-recall`, because noise pushes AI images toward "Real" while
+real-specificity *rises* — accuracy alone understates the damage.
+
+This covers the regression-test half of item 7's "no tests" bullet at whole-set
+granularity. It is not the two-image sanity assert that bullet also describes;
+that remains open.
 
 **Verified against prior measurements** (300 images per class, seed 0):
 
 | Run | Result | Expected |
 |---|---|---|
-| clean | 88.3% ±2.6 | row A, 88.0% ±3.7 |
+| clean | 88.3% ±2.6 | **row C**, 88.2% ±2.6 (same size, same offline path) |
 | `--noise 16` | AI-recall **55.7%** ±5.6 | 55.7% from the scratchpad run |
 | `--jpeg 30` | 88.0% ±2.6 | non-effect |
 
 The σ=16 reproduction is exact, so the acceptance test for item 4 now runs.
 
-**Problem.** Every number above was produced by throwaway scripts in a temporary
-directory outside the repository. They are not in version control and will not
-survive. No code in the tree reads `data/holdout_*` at all — the only evaluation
-runs on the internal train/test split. Revision 1 of this document cited an
-acceptance test of "re-run `scratchpad/grain.py`", a path that does not exist
-here. **The 2,257 holdout images on disk are currently unreachable by any
-committed code.**
+**Why this item existed.** Until this was written, every published number came
+from throwaway scripts in a temporary directory outside the repository, unversioned
+and about to be lost. No committed code read `data/holdout_*` at all — the only
+evaluation ran on the internal train/test split — so the 2,599 holdout images on
+disk were unreachable, and revision 1 cited an acceptance test of "re-run
+`scratchpad/grain.py`", a path that never existed here. That is now resolved.
 
 Note: `calibrate_thresholds.py:30` `predict_paths` was *not* reused. It calls
 `load_image_for_inference`, which decodes, resizes and preprocesses in one call and
@@ -170,8 +205,27 @@ Caveat: these are not 710 independent scenes — `Burst01`…`Burst16` are
 near-duplicates of a single moment. Report distinct scenes, not file count, and
 group-split by scene if they are ever held out.
 
-**Decision rule.** If 2a or 2b recovers most of σ=16 recall, item 4 downgrades
-from a retrain to a preprocessing change.
+**Decision rule.** Judge 2a and 2b against item 4's own bar, so the comparison is
+like-for-like:
+
+```
+python eval_holdout.py data/holdout_newdb --noise 16 --check-recall 0.70
+python eval_holdout.py data/holdout_newdb --check 0.85
+```
+
+If either experiment clears σ=16 AI-recall of 70% **while** clean accuracy stays
+within 3 points of row C's 88.2%, item 4 downgrades from a retrain to a
+preprocessing change. If one clears the recall bar but not the clean bar, record
+both numbers as the floor the retrain must beat rather than treating it as a pass.
+
+2a and 2b compose — 2a changes the input, 2b averages over input variants — but
+measure each alone first, or a failure cannot be attributed. Both shift the score
+distribution, so **both invalidate the 0.55 threshold**; 2a's "re-measure both"
+means clean accuracy and the threshold.
+
+Secondary consequence of 2a: injected noise makes serving non-deterministic, so the
+same upload can return different scores. Seed it per request or accept the variance
+deliberately.
 
 ---
 
@@ -212,10 +266,12 @@ nothing to catch it. Either track `thresholds.json` (add `!artifacts/thresholds.
 or delete the constant and fail loudly when the file is missing. Do not leave both.
 
 **3c. Re-baseline on the current data.** `metrics.json` reports a test support of
-1,000, which under the 70/15/15 split implies a training run on roughly 6,700
-images. The corpus is now 48,707 — it has grown about sevenfold. Without a clean
-re-baseline on today's data, "clean accuracy must not fall below 87%" compares
-against a model trained on a different dataset and means nothing. **The retrain
+1,000, which under the 70/15/15 split at `train.py:32-45` implies a **corpus** of
+roughly 6,700 images for that run — a training set of about 4,700. Today's corpus is
+48,707, around sevenfold larger. Without a clean re-baseline, any clean-accuracy
+floor (revision 2 proposed 87%; that figure is retired and replaced by the relative
+gate in item 4) compares against a model trained on a different dataset and means
+nothing. **The retrain
 runs twice: once without noise augmentation, once with.**
 
 ---
@@ -227,9 +283,9 @@ runs twice: once without noise augmentation, once with.**
 | σ (0–255 units) | Accuracy | AI-recall | vs clean |
 |---|---|---|---|
 | 0 | 88.2% | 88.0% | — |
-| 4 | 85.2% | 80.0% | −3.0, real |
-| 8 | 82.5% | 72.3% | −5.7, real |
-| 16 | 75.3% | **55.7%** | −12.9, real |
+| 4 | 85.2% | 80.0% | −3.0, significant |
+| 8 | 82.5% | 72.3% | −5.7, significant |
+| 16 | 75.3% | **55.7%** | −12.9, significant |
 
 Noise moves AI images toward "Real" nearly four times harder than it moves real
 photos (mean shift −0.288 vs −0.081).
@@ -255,17 +311,26 @@ distribution. Blur is optional and carries little of the value.
 While editing that block, check `RandomContrast(0.1)` and `RandomZoom` — they
 operate on the same pre-normalised tensors and carry the identical unit hazard.
 
-**Acceptance.** Via item 1's script, on the row C images:
+**Acceptance.** Two gates, both via item 1's script. Run the full
+`holdout_newdb` (no `--limit`) so the interval is as tight as the data allows:
+
 ```
-python eval_holdout.py data/holdout_newdb --noise 16 --check 0.85
-python eval_holdout.py data/holdout_newdb --check 0.86
+python eval_holdout.py data/holdout_newdb --noise 16 --check-recall 0.70
+python eval_holdout.py data/holdout_newdb --check <re-baseline minus 0.03>
 ```
 
-σ=16 AI-recall rises above 70% (from 55.7%), **and** clean accuracy stays within
-**3 points** of the item 3c re-baseline. Revision 2 said 1.5 points, which is below
-row C's own ±2.6 interval and therefore undecidable — a gate that cannot be failed
-honestly is not a gate. Use more images (`--limit` unset) to narrow the interval if
-a tighter bar is wanted.
+1. **Robustness:** σ=16 AI-recall above 70%, up from 55.7%. This needs
+   `--check-recall`, not `--check`: under noise, real-specificity *rises* to 98%
+   while recall collapses, so accuracy alone hides the failure. Verified against the
+   current model, this gate fails as it should — AI-recall 55.3%, below 0.700.
+2. **No clean regression:** accuracy within **3 points** of the item 3c
+   re-baseline. The floor is computed from that run, not hardcoded here, because
+   3c has not happened yet; writing a literal now would reintroduce the stale
+   baseline 3c exists to remove. If item 2 dissolved the retrain and 3c never ran,
+   use row C's 88.2% and the floor is 0.85.
+
+3 points, not revision 2's 1.5, because 1.5 sits inside row C's own ±2.6 interval —
+a gate that cannot be failed honestly is not a gate.
 
 ---
 
@@ -289,12 +354,25 @@ pointing at the fake class:
    images cropped or screenshotted to phone aspect get called Real**, which is
    exactly the bypass someone would stumble into by accident.
 
-**Change.** Collect 100–200 AI images that are both non-square and from a
-generator not in the training set. That is the only cell genuinely missing, and
-it tests both problems at once. For the format axis, a ~20-line synthetic
-save-path transform (random non-square crop, phone-resolution resize, chat-app
-JPEG re-encode) applied to the existing holdout is enough, with perhaps 50
-genuinely round-tripped images as a fidelity check.
+**Prerequisite: establish what generators are already in the corpus.** Nothing in
+the repository records the provenance of `data/processed/fake`. `artifacts/` holds
+`gemini_prompt_bank_500.csv` and `gemini_prompting_playbook.md`, and
+`data/raw/gemini_augmented`, `gemini_hard_augmented`, `gemini_hard_misses` and
+`gemini_test` all exist, which points at Gemini as at least one source — but that is
+inference from folder names, not a record. **Write the provenance down before
+collecting anything**, or "a generator not in the training set" cannot be satisfied
+or verified.
+
+**Change.** Collect 100–200 AI images that are both non-square and from a generator
+confirmed absent from that record. That is the only cell genuinely missing, and it
+tests both problems at once.
+
+For the format axis, a ~20-line synthetic save-path transform applied to the
+existing holdout is enough. Reuse the settings already measured so the result is
+comparable: random non-square crop to 4:3 or 16:9, resize to a phone resolution
+(1080×1440 or 1080×1920), JPEG re-encode at q70. Keep perhaps 50 genuinely
+round-tripped images — sent through a real chat app and saved back — as a check
+that the synthetic transform resembles the real save path.
 
 ---
 
@@ -304,7 +382,12 @@ genuinely round-tripped images as a fidelity check.
 `trainable_layers=45`; the 30 in `model.py:45` is a default no caller uses.
 Revision 1 said 30 and pointed at the wrong file. **The 30 → 45 experiment has
 already been run and its result was never recorded**, which lowers the expected
-value of trying 60 or 80 — re-establish what 45 buys before going further.
+value of trying 60 or 80.
+
+Re-establishing what 45 buys means a 30-layer comparison run, which is a retrain and
+therefore inherits all of item 3's prerequisites. There is no cheap version. If item
+2 dissolved the retrain, this item is not cheap either and should be weighed against
+item 6b, which needs no training at all.
 
 **6b. Cheap spectral probe, before any new branch.** Compute a handful of scalar
 high-frequency statistics **on the full-resolution image before the 224 resize**
@@ -323,18 +406,31 @@ hand-crafted noise statistics are easy to attack directly.
 features, drop-in change to `build_model`. Unmeasured.
 
 **Conflict to respect.** Item 4 teaches the backbone to **ignore** high-frequency
-energy; spectral methods **exploit** it. Run through one set of weights in that
-order, 6b is evaluated on a model trained to discard the signal it needs. Feed
-any spectral path the un-augmented tensor, or keep the two separate.
+energy; spectral methods **exploit** it. *If* both are run through one set of
+weights in the order this plan gives — item 4 before item 6b — *then* 6b is
+evaluated on a model deliberately trained to discard the signal it needs, and a
+negative result would say nothing about whether spectral signal exists.
+
+Avoid it one of two ways: feed the spectral path the un-augmented tensor while the
+spatial path gets the noise, or keep the two as separate models. Note that 6b as
+specified computes its statistics on the raw image before preprocessing, so it
+sidesteps this automatically — the conflict only binds if 6b is later promoted into
+a branch sharing the backbone's weights.
 
 ---
 
 ## Item 7 — Small fixes
 
-- **The threshold is fitted on the wrong score distribution.** `train.py:219`
-  fits it on `predict_probabilities`, a single forward pass, while both serving
-  and `calibrate_thresholds.py` flip-average two. Cheap to fix, and worth more
-  than any threshold-search machinery.
+- **The threshold is fitted on the wrong score distribution — but only fix this
+  if the search survives.** `train.py:219` fits it on `predict_probabilities`, a
+  single forward pass, while both serving and `calibrate_thresholds.py`
+  flip-average two. This matters only while `find_best_threshold` still chooses
+  the served value. The out-of-scope section recommends deleting that search and
+  freezing the threshold instead, which removes the defect rather than repairing
+  it. **Pick one:** delete the search (preferred, smaller) *or* fix the fit. Doing
+  both is contradictory, and doing neither leaves `train.py` silently replacing a
+  hand-set threshold with a badly-fitted one on the next run — which is what
+  item 3b describes.
 - **Too many digits.** `index.html:369` formats as `(value * 100).toFixed(2)` —
   four significant figures of a probability — for both `ai_probability` and
   `confidence`, in the single view and the batch table; `predict.py` does the
@@ -377,11 +473,51 @@ Listed so they are explicitly declined rather than quietly dropped.
   current file, so the unguarded ±0.24 swing cited in revision 1 cannot reach any
   written artifact. **The correct move is a deletion, not an addition:** freeze
   the threshold, cite the existing note, and remove the search. Item 3b still
-  applies — the frozen value has to survive a retrain.
+  applies — the frozen value has to survive a retrain, and today it is not even
+  tracked by git (3b-bis).
+
+  Taking this option retires item 7's threshold-fit bullet, since there is no fit
+  left to correct. Those two entries are alternatives, not a sequence.
 
 ---
 
 ## What changed
+
+### Revision 4
+
+Found by the Stage 6 comprehension test, which read this document alone with no
+codebase access — so every item below is a place the document failed to stand on
+its own, not a disagreement about the work.
+
+- **Item 1 contradicted itself**: it announced the harness as committed, then four
+  paragraphs later stated in the present tense that no committed code reads the
+  holdout sets. The motivation paragraph is now past-tensed.
+- **Item 4's acceptance commands did not test item 4's acceptance criteria.** They
+  gated on accuracy where the criterion is AI-recall, with numbers matching neither
+  reading, and one literal floor that pre-empted the very re-baseline it depended
+  on. `eval_holdout.py` gained `--check-recall` because the criterion was not
+  expressible before.
+- **Rows A-D were not marked as pre-dating item 0's fix**, so the table read as a
+  forecast for a model that no longer exists.
+- **Item 7 and the out-of-scope list gave opposite instructions** about the
+  threshold search. They are now stated as alternatives.
+- **"clean accuracy must not fall below 87%"** was quoted as though it existed
+  somewhere; it was revision 2's own wording. Retired explicitly.
+- **Item 5 was unactionable**: it asked for a generator absent from the training
+  set without the document ever recording which generators are in it.
+- **Item 6's "conflict to respect" was missing a conditional** and could be read as
+  an instruction to do the harmful thing.
+- **Item 2's decision rule had no number**; it now uses item 4's own bar.
+- Corrected: the verification table compared an offline 600-image run against row A
+  (300, HTTP) when it matches row C; "a training run on roughly 6,700 images" should
+  have read "a corpus of roughly 6,700"; holdout total is 2,599, not 2,257; row E is
+  single-pass at 0.50, not flip-averaged; interval units and confidence level were
+  never stated; "real" in the σ table meant "statistically significant" beside a
+  class named Real.
+- Added a glossary. The reviewer could not determine what `holdout_newdb`,
+  `holdout_hard_mined`, flip-average, real-spec, the band, `REPORT.md` or "served
+  over HTTP" meant, and the document never mentioned that the project is a deployed
+  web app.
 
 ### Revision 3
 

@@ -145,7 +145,12 @@ def main() -> None:
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--progress", action="store_true")
     parser.add_argument("--check", type=float, default=None,
-                        help="Exit non-zero if accuracy falls below this fraction, e.g. 0.80")
+                        help="Exit non-zero if ACCURACY falls below this fraction, e.g. 0.80")
+    parser.add_argument("--check-recall", type=float, default=None,
+                        help="Exit non-zero if AI-RECALL falls below this fraction, e.g. 0.70. "
+                             "Use this for robustness gates: under --noise the metric that "
+                             "matters is recall, because noise pushes AI images toward 'Real' "
+                             "while real-specificity rises.")
     args = parser.parse_args()
 
     if args.jpeg is not None and not 1 <= args.jpeg <= 100:
@@ -186,11 +191,21 @@ def main() -> None:
     print("  intervals are 95% and assume independent images; bursts of near-duplicate")
     print("  photos make the true interval wider than shown.")
 
-    if args.check is not None:
-        if accuracy < args.check:
-            print(f"\nFAIL: accuracy {accuracy:.3f} is below --check {args.check:.3f}")
-            raise SystemExit(1)
-        print(f"\nPASS: accuracy {accuracy:.3f} meets --check {args.check:.3f}")
+    gates = [
+        ("accuracy", accuracy, args.check, "--check"),
+        ("AI-recall", recall, args.check_recall, "--check-recall"),
+    ]
+    failed = False
+    for name, value, floor, flag in gates:
+        if floor is None:
+            continue
+        if value < floor:
+            print(f"\nFAIL: {name} {value:.3f} is below {flag} {floor:.3f}")
+            failed = True
+        else:
+            print(f"\nPASS: {name} {value:.3f} meets {flag} {floor:.3f}")
+    if failed:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
