@@ -1,11 +1,8 @@
 {
-  "threshold": 0.55,
-  "uncertain_low": 0.45,
-  "uncertain_high": 0.65,
-  "validation_accuracy_default_0_5": 0.893,
-  "validation_accuracy": 0.893,
-  "validation_f1_fake": 0.892462311557789,
-  "sample_count_per_class": 2000,
-  "model_path": "E:\\ML mini-project\\artifacts\\ai_image_detector.keras",
-  "tuning_note": "0.55 = median of a 200x bootstrap over 1000 held-out newdb images (IQR 0.54-0.58). The gain over 0.50 is +0.5pt, CI [-0.1, +1.2]: treat 0.50 and 0.55 as tied, not as an improvement."
+  "threshold": 0.65,
+  "uncertain_low": 0.55,
+  "uncertain_high": 0.75,
+  "validation_accuracy_default_0_5": 0.8695592663564193,
+  "validation_accuracy": 0.9022721051190802,
+  "validation_f1_fake": 0.9019769357495881
 }

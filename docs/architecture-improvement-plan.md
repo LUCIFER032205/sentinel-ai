@@ -3,7 +3,9 @@
 Revision 5, 2026-11-10. Revisions 1-4 were reviewed and superseded; reports in
 `docs/review/`. Corrections are listed at the end under "What changed".
 
-**Items 0, 1, 2, 2c, 3a and 4's code are done.** What remains is the two
+**Items 0, 1, 2, 2c, 3a, 3c and 4's code are done.** The item 3c baseline
+retrain has run — see "Item 3c RESULT" below. It moves every number in this
+document, so the pinned table now has a second block. What remains is the two
 training runs and the items that depend on them. See "How to run the retrains"
 below for the commands and the hazard they carry. Item 2's result removed the plan's cheap path:
 both no-retrain defences were measured and both failed, so the retrain in item 4
@@ -72,6 +74,52 @@ accuracy.** Both numbers are real but they come from different sets. Item 1
 makes one script the sole producer of this table, and the README must be
 regenerated from it in the same pass.
 
+### Item 3c RESULT — the baseline retrain (2026-11-11)
+
+28 epochs (10 frozen + 18 fine-tune) on all 48,707 images, `NOISE_AUG=0`, with
+item 0's `RandomContrast` fix in place. Best val_auc 0.9644 at fine-tune epoch
+14; `restore_best_weights` rolled back to it. Threshold re-fitted on the
+validation split with flip-averaging (the item 7 fix), landing at **0.65**, up
+from the hand-set 0.55.
+
+| ID | Measurement | Old model | **New baseline** |
+|----|-------------|-----------|------------------|
+| **F** | `holdout_newdb` (1,999), clean | 88.2% | **90.5% ±1.3** |
+| | — AI-recall | 88.0% | **95.5% ±1.3** |
+| | — real-specificity | 88.3% | **85.6% ±2.2** |
+| **G** | `holdout_newdb`, σ=16 grain attack | 75.3% | **83.4% ±1.6** |
+| | — AI-recall under attack | 55.7% | **68.8% ±2.9** |
+| **H** | internal test split (7,307), at 0.65 | — | 88.6% |
+
+**The model got better everywhere and more robust, without any grain
+augmentation.** That is item 0 plus sevenfold more data, not item 4.
+
+**But the bypass is still real.** Grain still costs 26.7 points of AI-recall
+(95.5% → 68.8%), against 32.3 points before. It is weaker, not closed.
+
+**The operating point moved.** AI-recall is up 7.5 points while real-specificity
+is down 2.7. The threshold rose to 0.65 to compensate and the model is now
+recall-leaning: on `holdout_newdb` it catches 95.5% of AI images and
+false-flags 14.4% of real photos. Whether that trade is right is a product
+decision, not a tuning one — `thresholds.json` is the single place to change it.
+
+### Item 4's gates, recalibrated
+
+The old gates were written against the old baseline and are now too weak to mean
+anything. σ=16 recall of 70% was a 14-point ask when the floor was 55.7%; against
+68.8% it is almost a tie.
+
+```
+python eval_holdout.py data/holdout_newdb --noise 16 --check-recall 0.80
+python eval_holdout.py data/holdout_newdb --check 0.875
+```
+
+- **Robustness:** σ=16 AI-recall above **80%**, up from the 68.8% this baseline
+  sets. Below ~75% the grain augmentation has not earned its retrain.
+- **No clean regression:** accuracy within 3 points of **90.5%**, so a floor of
+  0.875. Three points because row F's interval is ±1.3 and a tighter bar could
+  not be failed honestly.
+
 ---
 
 ## Where the project actually stands
@@ -82,7 +130,7 @@ regenerated from it in the same pass.
 | Input | 224×224, aspect squashed, preprocessed to [-1, 1] at load time (`data.py:26`) |
 | Scoring | flip-average, 2 forward passes, single threshold from `artifacts/thresholds.json` |
 | Training corpus | 24,763 real + 23,944 fake = **48,707 images** in `data/processed/` |
-| Known bypass | added grain, σ=16 → AI-recall falls to 55.7% |
+| Known bypass | added grain, σ=16 → AI-recall falls to 68.8% (was 55.7% pre-retrain) |
 
 ### Measured non-problems — do not spend effort here
 
