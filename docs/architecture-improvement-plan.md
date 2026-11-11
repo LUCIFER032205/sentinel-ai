@@ -3,7 +3,9 @@
 Revision 5, 2026-11-10. Revisions 1-4 were reviewed and superseded; reports in
 `docs/review/`. Corrections are listed at the end under "What changed".
 
-**Items 0, 1 and 2 are done.** Item 2's result removed the plan's cheap path:
+**Items 0, 1, 2, 2c, 3a and 4's code are done.** What remains is the two
+training runs and the items that depend on them. See "How to run the retrains"
+below for the commands and the hazard they carry. Item 2's result removed the plan's cheap path:
 both no-retrain defences were measured and both failed, so the retrain in item 4
 is now unavoidable and item 3's prerequisites are unconditional.
 
@@ -313,6 +315,50 @@ runs twice: once without noise augmentation, once with.**
 
 ---
 
+## How to run the retrains
+
+Measured throughput on this machine: **0.43 s per batch of 32** in the frozen
+phase, 1,066 steps per epoch over the 34,095 training images. The default
+schedule (10 frozen + 18 fine-tune epochs) is about **5 hours per run, 10 hours
+for both**. CPU only — TensorFlow has no GPU support on native Windows.
+
+**Hazard: `train.py` overwrites the live model mid-run.** `ModelCheckpoint` at
+`train.py:256` and `:283` writes straight to `artifacts/ai_image_detector.keras`,
+and the run then overwrites `thresholds.json` and `metrics.json` at the end. The
+server will be loading a half-trained model while a run is in progress.
+
+A pre-retrain snapshot is at `artifacts/snapshot_pre_retrain/`. The two JSON
+files are also tracked in git as of item 3b, so they can be restored with
+`git checkout -- artifacts/thresholds.json artifacts/metrics.json`. The model
+file is not in that snapshot's git history — the copy on disk is the only one.
+
+Run the baseline first. It differs from the grain run **only** in `NOISE_AUG`:
+
+```bash
+NOISE_AUG=0 python train.py    # item 3c: re-baseline on today's 48,707 images
+```
+
+```bash
+NOISE_AUG=1 python train.py    # item 4: the same run, with grain
+```
+
+Then gate the result:
+
+```bash
+python eval_holdout.py data/holdout_newdb --noise 16 --check-recall 0.70
+```
+
+```bash
+python eval_holdout.py data/holdout_newdb --check <baseline accuracy minus 0.03>
+```
+
+The baseline run exists to supply that second number. Until it finishes, there is
+no honest clean-accuracy floor to compare against: the current pinned table was
+measured on a model trained while `RandomContrast` was blanking 54.5% of every
+augmented image, and on a corpus a seventh the current size.
+
+---
+
 ## Item 4 — Close the grain bypass
 
 **Evidence.** Measured on row C's images. Monotonic and significant from σ=4:
@@ -340,10 +386,16 @@ photos (mean shift −0.288 vs −0.081).
 Revision 1 proposed `GaussianNoise(0.03)`, which is σ≈3.8 pixel units — the
 weakest rung on the ladder above, not the σ=16 bypass it was meant to close.
 
-**Change.** Add Gaussian noise to the augmenter in `train.py:47`, sampling σ per
-example across the measured attack range (0 to 0.125 preprocessed) rather than
-fixing it, and applying it to a fraction of each batch so clean inputs stay in
-distribution. Blur is optional and carries little of the value.
+**DONE (code only — the run has not happened).** Grain is added in a `tf.data`
+map, not in the augmenter `Sequential`: per-example σ and a batch fraction are not
+expressible in a `Sequential`. σ ~ U(0, 16) pixel units per example, on 50% of
+each batch. Verified that 50.4% of a batch receives grain, that realised σ spans
+0 to ~17.8 pixel units and reaches all three measured rungs, and that output stays
+clipped to [-1, 1].
+
+`NOISE_AUG=0` disables it for the baseline run. It is read with `os.getenv`, not
+`get_env_int` — that helper returns its default for any non-positive value, so
+`NOISE_AUG=0` meant "on" and both retrains would have been identical.
 
 `RandomContrast` was the only layer with a value-range hazard and item 0 fixed it.
 `RandomZoom` and `RandomRotation` are range-agnostic and need no change. Re-check
