@@ -2,7 +2,7 @@
   "threshold": 0.65,
   "uncertain_low": 0.55,
   "uncertain_high": 0.75,
-  "validation_accuracy_default_0_5": 0.8695592663564193,
-  "validation_accuracy": 0.9022721051190802,
-  "validation_f1_fake": 0.9019769357495881
+  "validation_accuracy_default_0_5": 0.8260333972077745,
+  "validation_accuracy": 0.8831097727894881,
+  "validation_f1_fake": 0.8864059590316573
 }
