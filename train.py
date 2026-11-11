@@ -25,6 +25,37 @@ from src.ai_image_detector.data import list_dataset, paths_to_dataset
 from src.ai_image_detector.model import build_model, unfreeze_for_fine_tuning
 
 
+# Item 4: grain augmentation, in the units the bypass was measured in.
+#
+# The attack ladder was measured in 8-bit pixel units: sigma 4 / 8 / 16 of 255,
+# with sigma=16 dropping AI-recall from 88% to 55.7%. data.py applies
+# preprocess_input at load time, so tensors here are in [-1, 1] and the
+# conversion is sigma_preprocessed = sigma_pixel / 127.5. Passing the pixel-unit
+# number straight to Keras would train at sigma ~0.03 pixel units - the floor of
+# the ladder, not the attack.
+NOISE_PIXEL_MAX = 16.0
+NOISE_SIGMA_MAX = NOISE_PIXEL_MAX / 127.5  # 0.1255 in preprocessed units
+# Share of each batch that gets grain. The rest stay clean so the model does not
+# drift off the distribution it is actually served.
+NOISE_FRACTION = 0.5
+
+
+def add_training_noise(images: tf.Tensor, labels: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor]:
+    """Add Gaussian grain with a per-example sigma, to part of each batch.
+
+    Per-example rather than per-batch so the model sees the whole attack range
+    rather than one sigma per step; a fraction rather than all so clean inputs
+    remain in distribution.
+    """
+    batch = tf.shape(images)[0]
+    sigma = tf.random.uniform((batch, 1, 1, 1), 0.0, NOISE_SIGMA_MAX)
+    selected = tf.cast(
+        tf.random.uniform((batch, 1, 1, 1)) < NOISE_FRACTION, images.dtype
+    )
+    noise = tf.random.normal(tf.shape(images), dtype=images.dtype) * sigma * selected
+    return tf.clip_by_value(images + noise, -1.0, 1.0), labels
+
+
 def make_datasets(
     paths: list,
     y: np.ndarray,
@@ -76,7 +107,21 @@ def make_datasets(
     train_ds = train_ds.map(
         lambda images, labels: (augmenter(images, training=True), labels),
         num_parallel_calls=tf.data.AUTOTUNE,
-    ).prefetch(tf.data.AUTOTUNE)
+    )
+    # NOISE_AUG=0 disables grain, which is how the item 3c re-baseline is run:
+    # the same code and the same data as the item 4 run, differing only here.
+    # Read directly rather than via get_env_int: that helper returns its default
+    # for any non-positive value, so NOISE_AUG=0 would silently mean "on" and
+    # both retrains would be identical.
+    if os.getenv("NOISE_AUG", "1").strip() not in {"0", "false", "False", "no"}:
+        train_ds = train_ds.map(add_training_noise, num_parallel_calls=tf.data.AUTOTUNE)
+        print(
+            f"Grain augmentation ON: sigma ~U(0, {NOISE_PIXEL_MAX:g}) pixel units "
+            f"(<= {NOISE_SIGMA_MAX:.4f} preprocessed) on {NOISE_FRACTION:.0%} of each batch."
+        )
+    else:
+        print("Grain augmentation OFF (NOISE_AUG=0) - this is a baseline run.")
+    train_ds = train_ds.prefetch(tf.data.AUTOTUNE)
 
     val_ds = paths_to_dataset(paths_val, y_val, batch_size, cache_path=cache_for("val"))
     # Unaugmented, unshuffled passes used for threshold fitting and final metrics.
