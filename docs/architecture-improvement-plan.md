@@ -223,7 +223,24 @@ Caveat: these are not 710 independent scenes — `Burst01`…`Burst16` are
 near-duplicates of a single moment. Report distinct scenes, not file count, and
 group-split by scene if they are ever held out.
 
-**Still to do here:** 2c. Reproduce with:
+**2c RESULT.** `eval_holdout.py` gained `--filter`; `--filter phone_real_IMG`
+over `data/processed` scores the 710 phone photos on their own:
+
+| | |
+|---|---|
+| real-specificity | **99.2% ±0.7** |
+| for comparison, held-out real images | 92-94% |
+
+**Read this as a ceiling, not an estimate.** All 710 are in the training set, and
+the ~7-point gap over held-out real photos is the memorisation showing. It does
+not say the detector handles phone photos well; it says it has seen these ones.
+
+Scene caveat, as promised: 16 of the 710 are a single burst
+(`IMG_20191221_104738_Burst01..16`), so the effective count is roughly 695 scenes
+across 32 capture days — a smaller correction than feared. They remain one
+person's camera roll, not a sample of phone photography in general.
+
+**Still to do here:** Reproduce with:
 
 ```
 python eval_holdout.py data/holdout_newdb --noise 16 --score-noise 8

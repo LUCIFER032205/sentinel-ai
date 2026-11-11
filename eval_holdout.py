@@ -57,7 +57,9 @@ def apply_noise(image: np.ndarray, sigma: float, rng: np.random.Generator) -> np
     return np.clip(noisy, 0, 255).astype(np.uint8)
 
 
-def collect(folder: Path, limit: int | None, seed: int) -> list[tuple[Path, int]]:
+def collect(
+    folder: Path, limit: int | None, seed: int, name_filter: str | None = None
+) -> list[tuple[Path, int]]:
     items: list[tuple[Path, int]] = []
     for class_name, label in ((REAL_CLASS_NAME, 0), (FAKE_CLASS_NAME, 1)):
         class_dir = folder / class_name
@@ -67,11 +69,24 @@ def collect(folder: Path, limit: int | None, seed: int) -> list[tuple[Path, int]
                 f"Pass a folder containing '{REAL_CLASS_NAME}/' and '{FAKE_CLASS_NAME}/'."
             )
         files = list(iter_image_files(class_dir))
-        if not files:
+        if name_filter:
+            files = [path for path in files if name_filter in path.name]
+            if not files:
+                # A single-class slice is a legitimate request: the phone photos
+                # exist only in the real class.
+                print(f"note: no '{name_filter}' files in {class_dir.name}/, skipping that class",
+                      file=sys.stderr)
+                continue
+        elif not files:
             raise SystemExit(f"No readable images in {class_dir}.")
         if limit is not None and limit < len(files):
             files = random.Random(seed).sample(files, limit)
         items += [(path, label) for path in files]
+    if not items:
+        raise SystemExit(
+            f"Nothing to score in {folder}"
+            + (f" matching '{name_filter}'." if name_filter else ".")
+        )
     return items
 
 
@@ -174,6 +189,10 @@ def main() -> None:
     parser.add_argument("--threshold", type=float, default=None,
                         help="Override the threshold from artifacts/thresholds.json")
     parser.add_argument("--limit", type=int, default=None, help="Images per class (default: all)")
+    parser.add_argument("--filter", dest="name_filter", default=None,
+                        help="Only score files whose name contains this substring, e.g. "
+                             "phone_real_IMG. A class with no match is skipped, so this can "
+                             "report one class on its own.")
     parser.add_argument("--seed", type=int, default=0, help="Seed for sampling and noise")
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--progress", action="store_true")
@@ -192,7 +211,7 @@ def main() -> None:
         raise SystemExit("--scale must be greater than 0 and at most 1.")
 
     threshold = args.threshold if args.threshold is not None else load_calibration().threshold
-    items = collect(args.folder, args.limit, args.seed)
+    items = collect(args.folder, args.limit, args.seed, args.name_filter)
     model = load_trained_model()
     probabilities, labels = score(model, items, args)
     if probabilities.size == 0:
