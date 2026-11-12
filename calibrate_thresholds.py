@@ -77,11 +77,22 @@ def find_best_threshold(labels: np.ndarray, probabilities: np.ndarray) -> dict[s
         best_accuracy = default_accuracy
         best_f1 = default_f1
 
-    best_threshold = float(np.clip(best_threshold, 0.35, 0.65))
+    # The lower bound is the one the comment above argues for: a very low
+    # threshold floods users with false AI verdicts. The old upper bound of 0.65
+    # had no such rationale and was silently capping real optima - both the
+    # baseline and the grain model fitted exactly 0.65 because that was the
+    # largest value this function could return. On the grain model the true
+    # validation optimum is 0.908, and clipping cost 3.35 points of accuracy.
+    best_threshold = float(np.clip(best_threshold, 0.35, 0.95))
+
+    # Band width scales with how much room there is on the nearer side. A fixed
+    # +/-0.10 is fine at 0.5 but degenerate at 0.9, where it would mark almost
+    # every AI verdict as borderline.
+    band = 0.10 * min(best_threshold, 1.0 - best_threshold) / 0.5
     return {
         "threshold": best_threshold,
-        "uncertain_low": float(max(0.0, best_threshold - 0.10)),
-        "uncertain_high": float(min(1.0, best_threshold + 0.10)),
+        "uncertain_low": float(max(0.0, best_threshold - band)),
+        "uncertain_high": float(min(1.0, best_threshold + band)),
         "validation_accuracy_default_0_5": default_accuracy,
         "validation_accuracy": best_accuracy,
         "validation_f1_fake": best_f1,

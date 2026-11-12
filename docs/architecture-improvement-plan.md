@@ -77,6 +77,68 @@ accuracy.** Both numbers are real but they come from different sets. Item 1
 makes one script the sole producer of this table, and the README must be
 regenerated from it in the same pass.
 
+### Threshold calibration was broken, and it explains the gate failure (2026-11-12)
+
+`find_best_threshold` clipped its result to `[0.35, 0.65]`
+(`calibrate_thresholds.py:80`). **Both the baseline and the grain model "fitted"
+exactly 0.65 because that was the largest value the function could return.**
+
+Measured on the grain model's own 7,306-image validation split, flip-averaged:
+
+| threshold | validation accuracy |
+|---|---|
+| 0.50 | 82.60% |
+| 0.65 (the clip ceiling) | 85.90% |
+| **0.908 (true optimum)** | **89.26%** |
+
+Clipping cost **3.35 points**. Note the validation optimum (0.908) and the
+holdout optimum (~0.90) agree almost exactly — so the earlier guess that
+validation and holdout were differently distributed was wrong. There was only
+ever the clip.
+
+**Fixed:** upper bound raised to 0.95; the 0.35 lower bound stays, since the
+comment above it gives a real reason (a very low threshold floods users with
+false AI verdicts). The low-confidence band now scales with headroom — a fixed
+±0.10 at threshold 0.9 would mark nearly every AI verdict as borderline.
+
+#### The threshold is a dial, and the two gates cannot both be met
+
+Grain model, same weights, only the threshold differing:
+
+| | baseline @0.65 | grain @0.65 | grain @0.908 |
+|---|---|---|---|
+| clean accuracy | 90.5% | 87.3% | **90.4%** |
+| clean AI-recall | **95.5%** | **95.8%** | 87.8% |
+| clean real-specificity | 85.6% | 78.9% | **93.1%** |
+| real photos false-flagged | 14.4% | 21.1% | **6.9%** |
+| σ=16 accuracy | 83.4% | **88.7%** | 85.8% |
+| σ=16 AI-recall | 68.8% | **91.5%** | 75.8% |
+| hard-mined accuracy | 75.5% | — | **78.8%** |
+
+- At **0.65**: gate 2 passes (91.5%), gate 1 fails (87.3%).
+- At **0.908**: gate 1 passes (90.4%), gate 2 fails (75.8%).
+
+**The grain model beats the baseline at either setting** — at 0.908 it ties on
+clean accuracy, and wins on real-specificity (+7.5), σ=16 accuracy (+2.4),
+σ=16 recall (+7.0) and the hard-mined set (+3.3). The only column it loses is
+clean AI-recall.
+
+#### What the gates actually exposed
+
+They were written assuming both could hold at once. The holdout sweep says
+thresholds around **0.75–0.85** satisfy both (e.g. 0.85 → 89.8% clean, 88.1%
+real-spec, 82.1% σ=16 recall). **Do not simply set 0.85** — that comes from
+looking at the holdout.
+
+The honest fix is that `find_best_threshold` maximises *clean accuracy*, which
+is not the objective here. A calibration objective that also weighs robustness
+would land lower than 0.908 by itself, on validation data, with no test-set
+peeking. That is the next piece of work.
+
+**Currently shipping: the grain model at 0.908**, chosen on validation alone.
+
+---
+
 ### Item 4 RESULT — the grain retrain (2026-11-12)
 
 Same code, same 48,707 images, same schedule as the 3c baseline. The only

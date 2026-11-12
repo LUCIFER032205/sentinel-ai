@@ -1,8 +1,11 @@
 {
-  "threshold": 0.65,
-  "uncertain_low": 0.55,
-  "uncertain_high": 0.75,
-  "validation_accuracy_default_0_5": 0.8260333972077745,
-  "validation_accuracy": 0.8831097727894881,
-  "validation_f1_fake": 0.8864059590316573
+  "threshold": 0.908,
+  "uncertain_low": 0.8896,
+  "uncertain_high": 0.9264,
+  "validation_accuracy_default_0_5": 0.826,
+  "validation_accuracy": 0.8926,
+  "validation_f1_fake": null,
+  "sample_count_per_class": 3592,
+  "model_path": "E:\\ML mini-project\\artifacts\\ai_image_detector.keras",
+  "tuning_note": "Fitted on the 7,306-image validation split (3,714 real / 3,592 fake) with flip-averaged scoring, the same path inference.py serves. The previous value of 0.65 was not a fitted optimum: find_best_threshold clipped to [0.35, 0.65] and 0.65 was the ceiling. Unclipped optimum is 0.908 at 89.26% validation accuracy, against 85.90% at 0.65. The holdout set played no part in fitting this."
 }
