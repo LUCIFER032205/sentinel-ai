@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 import tensorflow as tf
-from sklearn.metrics import accuracy_score, f1_score
+from sklearn.metrics import accuracy_score, f1_score, recall_score
 
 from src.ai_image_detector.config import MODEL_PATH, PROCESSED_DATA_DIR, SEED, THRESHOLD_PATH
 from src.ai_image_detector.data import VALID_SUFFIXES, iter_image_files, load_image_for_inference
@@ -50,6 +50,56 @@ def predict_paths(model: tf.keras.Model, paths: list[Path], batch_size: int) -> 
         probabilities.extend(averaged.tolist())
 
     return np.array(probabilities)
+
+
+def find_threshold_min_recall(
+    labels: np.ndarray,
+    probabilities: np.ndarray,
+    min_recall: float,
+) -> dict[str, float]:
+    """Pick the threshold that upsets the fewest real users, subject to catching enough AI.
+
+    Plain accuracy is the wrong objective when the two mistakes cost different
+    amounts. Here a real photo wrongly labelled AI-generated is the expensive
+    error - the user sees it and it is personal - while a missed AI image is
+    only expensive past a point. So: maximise real-photo specificity among the
+    thresholds that still reach min_recall on AI images.
+
+    Falls back to the accuracy-maximising threshold if no threshold reaches
+    min_recall, rather than silently shipping something that misses the target.
+    """
+    grid = np.linspace(0.05, 0.95, 451)
+    best = None
+    for threshold in grid:
+        predicted = (probabilities >= threshold).astype(int)
+        recall = recall_score(labels, predicted, pos_label=1, zero_division=0)
+        if recall < min_recall:
+            continue
+        specificity = recall_score(labels, predicted, pos_label=0, zero_division=0)
+        if best is None or specificity > best[1]:
+            best = (float(threshold), float(specificity), float(recall))
+
+    if best is None:
+        info = find_best_threshold(labels, probabilities)
+        info["min_recall_target"] = float(min_recall)
+        info["min_recall_met"] = False
+        return info
+
+    threshold, specificity, recall = best
+    predicted = (probabilities >= threshold).astype(int)
+    band = 0.10 * min(threshold, 1.0 - threshold) / 0.5
+    return {
+        "threshold": round(threshold, 4),
+        "uncertain_low": round(max(0.0, threshold - band), 4),
+        "uncertain_high": round(min(1.0, threshold + band), 4),
+        "objective": "max real-specificity subject to AI-recall >= min_recall",
+        "min_recall_target": float(min_recall),
+        "min_recall_met": True,
+        "validation_accuracy": float(accuracy_score(labels, predicted)),
+        "validation_ai_recall": recall,
+        "validation_real_specificity": specificity,
+        "validation_f1_fake": float(f1_score(labels, predicted, pos_label=1, zero_division=0)),
+    }
 
 
 def find_best_threshold(labels: np.ndarray, probabilities: np.ndarray) -> dict[str, float]:

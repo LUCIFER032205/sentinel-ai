@@ -1,11 +1,15 @@
 {
-  "threshold": 0.908,
-  "uncertain_low": 0.8896,
-  "uncertain_high": 0.9264,
-  "validation_accuracy_default_0_5": 0.826,
-  "validation_accuracy": 0.8926,
-  "validation_f1_fake": null,
+  "threshold": 0.876,
+  "uncertain_low": 0.8512,
+  "uncertain_high": 0.9008,
+  "objective": "max real-specificity subject to AI-recall >= min_recall",
+  "min_recall_target": 0.9,
+  "min_recall_met": true,
+  "validation_accuracy": 0.8907747057213249,
+  "validation_ai_recall": 0.9003340757238307,
+  "validation_real_specificity": 0.8815293484114163,
+  "validation_f1_fake": 0.8901734104046243,
   "sample_count_per_class": 3592,
   "model_path": "E:\\ML mini-project\\artifacts\\ai_image_detector.keras",
-  "tuning_note": "Fitted on the 7,306-image validation split (3,714 real / 3,592 fake) with flip-averaged scoring, the same path inference.py serves. The previous value of 0.65 was not a fitted optimum: find_best_threshold clipped to [0.35, 0.65] and 0.65 was the ceiling. Unclipped optimum is 0.908 at 89.26% validation accuracy, against 85.90% at 0.65. The holdout set played no part in fitting this."
+  "tuning_note": "Fitted on the validation split only, flip-averaged, with the objective 'maximise real-photo specificity subject to AI-recall >= 0.90'. That encodes the stated preference that a real photo wrongly flagged as AI is the more costly error, with missed AI images acceptable up to about 10%. Plain accuracy was the wrong objective because it treats both mistakes as equally expensive. The holdout sets played no part in choosing this value."
 }

@@ -77,6 +77,66 @@ accuracy.** Both numbers are real but they come from different sets. Item 1
 makes one script the sole producer of this table, and the README must be
 regenerated from it in the same pass.
 
+### SHIPPING: grain model at threshold 0.876 (2026-11-12)
+
+The threshold is now fitted to a stated preference rather than to raw accuracy.
+
+**The preference, in the project owner's words:** a holiday photo wrongly called
+AI-generated is the bigger problem; missing an AI image is tolerable if it
+happens only 5-10% of the time.
+
+**Encoded as:** maximise real-photo specificity subject to AI-recall >= 0.90.
+Implemented as `find_threshold_min_recall` in `calibrate_thresholds.py`, fitted
+on the 7,306-image validation split with flip-averaged scoring. **The holdout
+sets played no part in choosing it.**
+
+| | validation (where it was fitted) | holdout (verification) |
+|---|---|---|
+| AI missed | 10.0% | **9.7%** |
+| real photos flagged | 11.8% | **10.0%** |
+| accuracy | 89.1% | **90.1%** |
+
+It generalised: the constraint is satisfied on data that did not set it.
+
+#### Final numbers, all three sets
+
+| | baseline @0.65 | **shipping: grain @0.876** |
+|---|---|---|
+| clean accuracy | 90.5% | **90.1% ±1.3** |
+| clean AI-recall | **95.5%** | 90.3% ±1.8 |
+| clean real-specificity | 85.6% | **90.0% ±1.9** |
+| real photos false-flagged | 14.4% | **10.0%** |
+| σ=16 accuracy | 83.4% | **87.0% ±1.5** |
+| σ=16 AI-recall | 68.8% | **79.4% ±2.5** |
+| hard-mined accuracy | 75.5% | **78.5% ±3.3** |
+
+Against the baseline this gives up 5.2 points of clean AI-recall and wins
+everywhere else: +4.4 real-specificity, +3.6 σ=16 accuracy, **+10.6 σ=16
+recall**, +3.0 on the hard-mined set.
+
+#### Gates
+
+- **Gate 1 (clean accuracy ≥ 87.5%): PASS at 90.1%.**
+- **Gate 2 (σ=16 AI-recall ≥ 80%): 79.4% ±2.5** — a statistical tie with the
+  bar rather than a pass. Honest reading: not demonstrated, not refuted.
+
+Both near-met at one threshold, where the extremes could only satisfy one each
+(0.65 passed gate 2 and failed gate 1; 0.908 the reverse).
+
+#### What it costs under deliberate attack
+
+If someone adds grain on purpose, 20.6% of AI images read as real, against
+9.7% normally. That is the residual exposure and it is not closed. It was 31.2%
+before item 4, so grain augmentation roughly halved it.
+
+#### Changing this later
+
+It is one number. Edit `MIN_RECALL` and refit — the objective is stated in code,
+so the decision does not have to be re-argued. Raising the constraint catches
+more AI and flags more real photos; lowering it does the reverse.
+
+---
+
 ### Threshold calibration was broken, and it explains the gate failure (2026-11-12)
 
 `find_best_threshold` clipped its result to `[0.35, 0.65]`
